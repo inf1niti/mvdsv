@@ -3779,6 +3779,12 @@ void SV_ServerSideWeaponRank(client_t* client, int* best_weapon, int* best_impul
 				return;
 			}
 			break;
+		case 22:
+		  if (items & IT_HOOK) {
+				*best_weapon = IT_HOOK;
+				*best_impulse = 22;
+				return;
+			}
 		}
 	}
 

@@ -113,6 +113,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	IT_INVULNERABILITY		1048576
 #define	IT_SUIT					2097152
 #define	IT_QUAD					4194304
+#define	IT_HOOK					8388608
 
 #define	IT_SIGIL1				(1<<28)
 
