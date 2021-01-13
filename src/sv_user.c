@@ -3832,6 +3832,11 @@ void SV_PostRunCmd(void)
 
 			SV_ServerSideWeaponRank(sv_client, &best_weapon, &best_impulse, &hide_weapon, &hide_impulse);
 
+			if (Info_Get(&sv_client->_userinfo_ctx_, "dev")[0] == '1') {
+				SV_ClientPrintf(sv_client, PRINT_HIGH, "best impulse: %d\n", best_impulse);
+				SV_ClientPrintf(sv_client, PRINT_HIGH, "best weapon: %d\n", best_impulse);
+			}
+
 			hiding = (sv_client->weaponswitch_wasfiring && !firing && hide_impulse);
 			sv_client->weaponswitch_wasfiring |= firing;
 
