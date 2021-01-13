@@ -4192,8 +4192,8 @@ void SV_ExecuteClientMessage (client_t *cl)
 				int weap1 = (weap >> 4) & 15;
 				int weap2 = (weap & 15);
 
-				weap1 = bound(0, weap1, 9);
-				weap2 = bound(0, weap2, 9);
+				weap1 = bound(0, weap1, 22);
+				weap2 = bound(0, weap2, 22);
 
 				if (weap1 && write && w < MAX_WEAPONSWITCH_OPTIONS) {
 					new_wrank[w] = '0' + weap1;
