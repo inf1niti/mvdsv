@@ -49,6 +49,32 @@ vec3_t	player_maxs = {16, 16, 32};
 
 #define MAX_JUMPFIX_DOTPRODUCT -0.1
 
+#define HOOK_PULL_SPEED      684
+#define HOOK_INIT_PULL_SPEED 360
+#define HOOK_ACCEL_TIME      0.598f
+#define HOOK_EPSILON         0.000001f
+#define HOOK_GROUND_DETACH_MIN_UP 0.02f
+#define HOOK_GROUND_DETACH_SPEED 360
+#define HOOK_GROUND_MIN_LIFT_SPEED 120
+#define HOOK_GROUND_MAX_LIFT_SPEED 260
+#define HOOK_GROUND_FULL_LIFT_UP 0.25f
+#define HOOK_INPUT_TANGENTIAL_ACCEL 290
+#define HOOK_INPUT_BACK_PULL_SCALE 0.55f
+#define HOOK_INPUT_BACK_RESIST_SCALE 0.85f
+#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.12f
+#define HOOK_VERTICAL_PULL_BOOST 0.35f
+#define HOOK_MIN_GRAVITY 0.36f
+#define HOOK_MAX_GRAVITY 0.78f
+#define HOOK_PULL_ACCEL 4800
+#define HOOK_PULL_DECEL 2400
+#define HOOK_PULL_RECOVER 7200
+#define HOOK_RADIAL_SPEED_CAP 1.14f
+#define HOOK_RADIAL_AWAY_CAP 0.85f
+#define HOOK_TANGENTIAL_SPEED_CAP 1.035f
+#define HOOK_TOTAL_SPEED_CAP 1.26f
+#define HOOK_SPEED_PRESERVE_TIME 0.22f
+#define HOOK_SPEED_PRESERVE_BUFFER 0.99f
+
 // Add an entity to touch list, discarding duplicates
 static void PM_AddTouchedEnt (int num)
 {
@@ -81,6 +107,173 @@ static void PM_ClipVelocity (vec3_t in, vec3_t normal, vec3_t out, float overbou
 		if (out[i] > -STOP_EPSILON && out[i] < STOP_EPSILON)
 			out[i] = 0;
 	}
+}
+
+static void PM_HookDecomposeVelocity(vec3_t velocity, vec3_t uv_hook, vec3_t radialVel, vec3_t tangentialVel, float *radialSpeed)
+{
+	*radialSpeed = DotProduct(velocity, uv_hook);
+	VectorScale(uv_hook, *radialSpeed, radialVel);
+	VectorSubtract(velocity, radialVel, tangentialVel);
+}
+
+static float PM_HookApproach(float current, float target, float accel, float decel)
+{
+	float delta;
+	float step;
+
+	delta = target - current;
+	step = (delta > 0) ? accel : decel;
+
+	if (fabs(delta) <= step) {
+		return target;
+	}
+
+	return current + ((delta > 0) ? step : -step);
+}
+
+static float PM_HookPreserveFactor(void)
+{
+	return bound(0, 1.0f - (pmove.hook_time / HOOK_SPEED_PRESERVE_TIME), 1.0f);
+}
+
+static float PM_HookPreservedCap(float normalCap, float initialSpeed, float preserveFactor)
+{
+	float preservedCap;
+
+	preservedCap = initialSpeed * HOOK_SPEED_PRESERVE_BUFFER;
+	if (preservedCap <= normalCap) {
+		return normalCap;
+	}
+
+	return normalCap + (preservedCap - normalCap) * preserveFactor;
+}
+
+static void PM_HookApplyCaps(vec3_t uv_hook, float maxPull)
+{
+	vec3_t radialVel;
+	vec3_t tangentialVel;
+	float radialSpeed;
+	float tangentialSpeed;
+	float totalSpeed;
+	float cap;
+	float preserveFactor;
+
+	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	preserveFactor = PM_HookPreserveFactor();
+
+	cap = PM_HookPreservedCap(maxPull * HOOK_RADIAL_SPEED_CAP, pmove.hook_initial_radial_speed, preserveFactor);
+	radialSpeed = bound(-(maxPull * HOOK_RADIAL_AWAY_CAP), radialSpeed, cap);
+	VectorScale(uv_hook, radialSpeed, radialVel);
+
+	tangentialSpeed = VectorNormalize(tangentialVel);
+	cap = PM_HookPreservedCap(maxPull * HOOK_TANGENTIAL_SPEED_CAP, pmove.hook_initial_tangential_speed, preserveFactor);
+	if (tangentialSpeed > cap) {
+		VectorScale(tangentialVel, cap, tangentialVel);
+	}
+	else {
+		VectorScale(tangentialVel, tangentialSpeed, tangentialVel);
+	}
+
+	VectorAdd(radialVel, tangentialVel, pmove.velocity);
+
+	totalSpeed = VectorLength(pmove.velocity);
+	cap = PM_HookPreservedCap(maxPull * HOOK_TOTAL_SPEED_CAP, pmove.hook_initial_speed, preserveFactor);
+	if (totalSpeed > cap) {
+		VectorScale(pmove.velocity, cap / totalSpeed, pmove.velocity);
+	}
+}
+
+static void PM_HookMove(void)
+{
+	vec3_t hookVector;
+	vec3_t uv_hook;
+	vec3_t radialVel;
+	vec3_t tangentialVel;
+	vec3_t wishDir;
+	vec3_t tangentDir;
+	vec3_t gravityDir;
+	float distance;
+	float radialSpeed;
+	float targetSpeed;
+	float accel;
+	float wishAlign;
+	float wishSpeed;
+	float radialFactor;
+	float gravityScale;
+	qbool forwardHeld;
+
+	if (pmove.hook_state != mvd_hook_anchored) {
+		return;
+	}
+
+	VectorSubtract(pmove.hook_anchor, pmove.origin, hookVector);
+	VectorCopy(hookVector, uv_hook);
+	distance = VectorNormalize(uv_hook);
+	if (distance < HOOK_EPSILON) {
+		return;
+	}
+
+	if (uv_hook[2] > HOOK_GROUND_DETACH_MIN_UP) {
+		float liftSpeed;
+
+		pmove.onground = false;
+		liftSpeed = HOOK_GROUND_MAX_LIFT_SPEED * bound(0, uv_hook[2] / HOOK_GROUND_FULL_LIFT_UP, 1);
+		liftSpeed = max(HOOK_GROUND_MIN_LIFT_SPEED, liftSpeed);
+		if (pmove.velocity[2] < liftSpeed) {
+			pmove.velocity[2] = liftSpeed;
+		}
+	}
+
+	VectorMA(vec3_origin, max(pmove.cmd.forwardmove, 0), pm_forward, wishDir);
+	VectorMA(wishDir, pmove.cmd.sidemove, pm_right, wishDir);
+	VectorCopy(wishDir, tangentDir);
+	VectorMA(tangentDir, -DotProduct(tangentDir, uv_hook), uv_hook, tangentDir);
+	VectorNormalize(tangentDir);
+
+	VectorMA(vec3_origin, pmove.cmd.forwardmove, pm_forward, wishDir);
+	VectorMA(wishDir, pmove.cmd.sidemove, pm_right, wishDir);
+	wishSpeed = VectorNormalize(wishDir);
+	wishAlign = (wishSpeed > HOOK_EPSILON) ? bound(-1.0f, DotProduct(wishDir, uv_hook), 1.0f) : 0;
+	forwardHeld = pmove.cmd.forwardmove > 0;
+
+	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+
+	targetSpeed = HOOK_INIT_PULL_SPEED + bound(0, pmove.hook_time / HOOK_ACCEL_TIME, 1) * (HOOK_PULL_SPEED - HOOK_INIT_PULL_SPEED);
+	targetSpeed += bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (HOOK_PULL_SPEED - targetSpeed);
+	if (forwardHeld) {
+		targetSpeed += HOOK_INPUT_FORWARD_RADIAL_BOOST * (HOOK_PULL_SPEED - targetSpeed);
+	}
+	if (wishAlign < -0.15f) {
+		targetSpeed *= 1.0f + (wishAlign * HOOK_INPUT_BACK_PULL_SCALE * HOOK_INPUT_BACK_RESIST_SCALE);
+	}
+	if (uv_hook[2] < -HOOK_GROUND_DETACH_MIN_UP) {
+		float fallingPull;
+
+		fallingPull = max(0, -pmove.velocity[2]) * -uv_hook[2];
+		targetSpeed = max(targetSpeed, fallingPull);
+	}
+
+	targetSpeed = bound(HOOK_INIT_PULL_SPEED * 0.25f, targetSpeed, HOOK_PULL_SPEED * HOOK_RADIAL_SPEED_CAP);
+	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? HOOK_PULL_RECOVER : HOOK_PULL_ACCEL;
+	radialSpeed = PM_HookApproach(radialSpeed, targetSpeed, accel * pm_frametime, HOOK_PULL_DECEL * pm_frametime);
+	VectorScale(uv_hook, radialSpeed, radialVel);
+	VectorAdd(radialVel, tangentialVel, pmove.velocity);
+
+	if (wishAlign >= -0.15f && VectorLength(tangentDir) > HOOK_EPSILON) {
+		VectorMA(pmove.velocity, HOOK_INPUT_TANGENTIAL_ACCEL * pm_frametime, tangentDir, pmove.velocity);
+	}
+
+	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	radialFactor = bound(0, radialSpeed / HOOK_PULL_SPEED, 1);
+	VectorSet(gravityDir, 0, 0, -1);
+	VectorMA(gravityDir, -DotProduct(gravityDir, uv_hook), uv_hook, gravityDir);
+	if (VectorNormalize(gravityDir) > HOOK_EPSILON && radialFactor > 0.02f && !forwardHeld) {
+		gravityScale = HOOK_MIN_GRAVITY + radialFactor * (HOOK_MAX_GRAVITY - HOOK_MIN_GRAVITY);
+		VectorMA(pmove.velocity, gravityScale * movevars.gravity * pm_frametime, gravityDir, pmove.velocity);
+	}
+
+	PM_HookApplyCaps(uv_hook, HOOK_PULL_SPEED);
+	pmove.hook_time = min(pmove.hook_time + pm_frametime, HOOK_ACCEL_TIME);
 }
 
 //The basic solid body movement clip that slides along multiple planes
@@ -937,6 +1130,7 @@ int PM_PlayerMove(void)
 	PM_CheckJump();
 
 	PM_Friction();
+	PM_HookMove();
 
 	if (pmove.waterlevel >= 2)
 		blocked = PM_WaterMove();

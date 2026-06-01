@@ -194,6 +194,14 @@ extern int fofs_trackent;
 extern int fofs_visibility;
 extern int fofs_hide_players;
 extern int fofs_teleported;
+extern int fofs_hook;
+extern int fofs_hook_out;
+extern int fofs_on_hook;
+extern int fofs_hook_reset_time;
+extern int fofs_hook_initial_length;
+extern int fofs_hook_initial_radial_speed;
+extern int fofs_hook_initial_tangential_speed;
+extern int fofs_hook_initial_speed;
 
 #define EdictFieldFloat(ed, fieldoffset) ((eval_t *)((byte *)(ed)->v + (fieldoffset)))->_float
 #define EdictFieldVector(ed, fieldoffset) ((eval_t *)((byte *)(ed)->v + (fieldoffset)))->vector

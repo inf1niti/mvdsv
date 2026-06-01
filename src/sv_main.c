@@ -56,6 +56,7 @@ cvar_t	sys_select_timeout = {"sys_select_timeout", "10000", 0, OnChange_sysselec
 
 cvar_t	sys_restart_on_error = {"sys_restart_on_error", "0"};
 cvar_t  sv_mod_extensions = { "sv_mod_extensions", "2", CVAR_ROM };
+cvar_t  sv_rctf_hook = { "sv_rctf_hook", "1", CVAR_SERVERINFO };
 
 #ifdef SERVERONLY
 cvar_t  sys_simulation = { "sys_simulation", "0" };
@@ -3605,6 +3606,7 @@ void SV_InitLocal (void)
 	Cvar_Register(&qwm_homepage);
 
 	Cvar_Register(&sv_mod_extensions);
+	Cvar_Register(&sv_rctf_hook);
 
 #ifdef FTE_PEXT_CSQC
 	Cvar_Register (&sv_csqc_progname);
@@ -3676,6 +3678,9 @@ void SV_InitLocal (void)
 #endif
 #ifdef MVD_PEXT1_HIDDEN_MESSAGES
 	svs.mvdprotocolextension1 |= MVD_PEXT1_HIDDEN_MESSAGES;
+#endif
+#ifdef MVD_PEXT1_PREDICTED_HOOK
+	svs.mvdprotocolextension1 |= MVD_PEXT1_PREDICTED_HOOK;
 #endif
 #ifdef MVD_PEXT1_SERVERSIDEWEAPON2
 	svs.mvdprotocolextension1 |= MVD_PEXT1_SERVERSIDEWEAPON2;

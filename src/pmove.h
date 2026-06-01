@@ -58,6 +58,17 @@ typedef struct {
 	// input
 	usercmd_t	cmd;
 
+	// predicted grappling hook
+	int			hook_state;
+	vec3_t		hook_anchor;
+	float		hook_time;
+	float		hook_initial_length;
+	float		hook_initial_radial_speed;
+	float		hook_initial_tangential_speed;
+	float		hook_initial_speed;
+	float		hook_tension;
+	float		hook_awaytime;
+
 	// results
 	int			numtouch;
 	int			touchindex[MAX_PHYSENTS];

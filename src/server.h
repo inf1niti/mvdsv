@@ -388,6 +388,23 @@ typedef struct client_s
 	byte            weaponswitch_priority[MAX_WEAPONSWITCH_OPTIONS];
 #endif
 
+#ifdef MVD_PEXT1_PREDICTED_HOOK
+	int             hook_state;
+	qbool           hook_wasfiring;
+	vec3_t          hook_origin;
+	vec3_t          hook_velocity;
+	vec3_t          hook_anchor;
+	float           hook_time;
+	float           hook_initial_length;
+	float           hook_initial_radial_speed;
+	float           hook_initial_tangential_speed;
+	float           hook_initial_speed;
+	float           hook_tension;
+	float           hook_awaytime;
+	double          hook_cooldown_end_time;
+	double          hook_retract_end_time;
+#endif
+
 	qbool           mvd_write_usercmds;
 
 	// Safestrafe enforcement state

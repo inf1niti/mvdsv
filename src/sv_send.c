@@ -901,6 +901,53 @@ void SV_UpdateClientStats (client_t *client)
 SV_SendClientDatagram
 =======================
 */
+#ifdef MVD_PEXT1_PREDICTED_HOOK
+static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg)
+{
+	int i;
+	int count;
+
+	if (!(client->mvdprotocolextensions1 & MVD_PEXT1_PREDICTED_HOOK)) {
+		return;
+	}
+
+	count = 0;
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		if (svs.clients[i].state == cs_spawned && svs.clients[i].hook_state != mvd_hook_inactive) {
+			count++;
+		}
+	}
+
+	MSG_WriteByte(msg, svc_mvd_hookstate);
+	MSG_WriteByte(msg, count);
+
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		client_t *hook_client;
+
+		hook_client = &svs.clients[i];
+		if (hook_client->state != cs_spawned || hook_client->hook_state == mvd_hook_inactive) {
+			continue;
+		}
+
+		MSG_WriteByte(msg, i);
+		MSG_WriteByte(msg, hook_client->hook_state);
+		MSG_WriteFloat(msg, hook_client->hook_origin[0]);
+		MSG_WriteFloat(msg, hook_client->hook_origin[1]);
+		MSG_WriteFloat(msg, hook_client->hook_origin[2]);
+		MSG_WriteFloat(msg, hook_client->hook_anchor[0]);
+		MSG_WriteFloat(msg, hook_client->hook_anchor[1]);
+		MSG_WriteFloat(msg, hook_client->hook_anchor[2]);
+		MSG_WriteFloat(msg, hook_client->hook_time);
+		MSG_WriteFloat(msg, hook_client->hook_initial_length);
+		MSG_WriteFloat(msg, hook_client->hook_initial_radial_speed);
+		MSG_WriteFloat(msg, hook_client->hook_initial_tangential_speed);
+		MSG_WriteFloat(msg, hook_client->hook_initial_speed);
+		MSG_WriteFloat(msg, hook_client->hook_tension);
+		MSG_WriteFloat(msg, hook_client->hook_awaytime);
+	}
+}
+#endif
+
 void SV_SendClientDatagram (client_t *client, int client_num)
 {
 	byte		buf[MAX_DATAGRAM];
@@ -929,6 +976,10 @@ void SV_SendClientDatagram (client_t *client, int client_num)
 		// this will include clients, a packetentities, and
 		// possibly a nails update
 		SV_WriteEntitiesToClient(client, &msg, false);
+
+#ifdef MVD_PEXT1_PREDICTED_HOOK
+		SV_WritePredictedHookStatesToClient(client, &msg);
+#endif
 
 #ifdef FTE_PEXT2_VOICECHAT
 		SV_VoiceSendPacket(client, &msg);
