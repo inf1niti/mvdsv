@@ -391,6 +391,7 @@ typedef struct client_s
 #ifdef MVD_PEXT1_PREDICTED_HOOK
 	int             hook_state;
 	qbool           hook_wasfiring;
+	int             hook_flags;
 	vec3_t          hook_origin;
 	vec3_t          hook_velocity;
 	vec3_t          hook_anchor;
@@ -401,6 +402,9 @@ typedef struct client_s
 	float           hook_initial_speed;
 	float           hook_tension;
 	float           hook_awaytime;
+	float           hook_min_pull;
+	float           hook_max_pull;
+	byte            hook_sent_state[MAX_CLIENTS];
 	double          hook_cooldown_end_time;
 	double          hook_retract_end_time;
 #endif

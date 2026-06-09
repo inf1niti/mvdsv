@@ -3786,6 +3786,8 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 	pmove.hook_initial_speed = sv_client->hook_initial_speed;
 	pmove.hook_tension = sv_client->hook_tension;
 	pmove.hook_awaytime = sv_client->hook_awaytime;
+	pmove.hook_min_pull = sv_client->hook_min_pull;
+	pmove.hook_max_pull = sv_client->hook_max_pull;
 #endif
 	
 	// let KTeams "broken ankle" code work

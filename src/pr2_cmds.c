@@ -61,6 +61,7 @@ typedef intptr_t (*ext_syscall_t)(intptr_t *arg);
 typedef struct rctf_hook_state_s
 {
 	int state;
+	int flags;
 	vec3_t origin;
 	vec3_t anchor;
 	float hook_time;
@@ -70,6 +71,8 @@ typedef struct rctf_hook_state_s
 	float initial_speed;
 	float tension;
 	float awaytime;
+	float min_pull;
+	float max_pull;
 } rctf_hook_state_t;
 
 #ifdef FTE_PEXT_CSQC
@@ -2101,6 +2104,7 @@ static void EXT_ClearRCTFHookState(client_t *cl)
 {
 	cl->hook_state = mvd_hook_inactive;
 	cl->hook_wasfiring = false;
+	cl->hook_flags = 0;
 	VectorClear(cl->hook_origin);
 	VectorClear(cl->hook_velocity);
 	VectorClear(cl->hook_anchor);
@@ -2111,6 +2115,8 @@ static void EXT_ClearRCTFHookState(client_t *cl)
 	cl->hook_initial_speed = 0;
 	cl->hook_tension = 0;
 	cl->hook_awaytime = 0;
+	cl->hook_min_pull = 0;
+	cl->hook_max_pull = 0;
 	cl->hook_cooldown_end_time = 0;
 	cl->hook_retract_end_time = 0;
 }
@@ -2149,12 +2155,17 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 
 	if (cl->hook_state == state->state && state->state == mvd_hook_anchored)
 	{
+		cl->hook_flags = state->flags;
 		VectorCopy(state->origin, cl->hook_origin);
 		VectorCopy(state->anchor, cl->hook_anchor);
+		cl->hook_min_pull = state->min_pull;
+		cl->hook_max_pull = state->max_pull;
 		return 1;
 	}
 
 	cl->hook_state = state->state;
+	cl->hook_wasfiring = true;
+	cl->hook_flags = state->flags;
 	VectorCopy(state->origin, cl->hook_origin);
 	VectorCopy(state->anchor, cl->hook_anchor);
 	VectorClear(cl->hook_velocity);
@@ -2165,6 +2176,8 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 	cl->hook_initial_speed = state->initial_speed;
 	cl->hook_tension = state->tension;
 	cl->hook_awaytime = state->awaytime;
+	cl->hook_min_pull = state->min_pull;
+	cl->hook_max_pull = state->max_pull;
 
 	return 1;
 }

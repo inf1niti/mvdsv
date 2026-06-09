@@ -902,6 +902,84 @@ SV_SendClientDatagram
 =======================
 */
 #ifdef MVD_PEXT1_PREDICTED_HOOK
+static short SV_HookStateShort(float value)
+{
+	if (value > 32767) {
+		return 32767;
+	}
+	if (value < -32768) {
+		return -32768;
+	}
+	return (short)value;
+}
+
+static short SV_HookStateMillis(float value)
+{
+	return SV_HookStateShort(value * 1000.0f);
+}
+
+static short SV_HookStateScaled(float value)
+{
+	return SV_HookStateShort(value * 1000.0f);
+}
+
+static void SV_WriteHookStateCoords(sizebuf_t *msg, vec3_t origin)
+{
+	MSG_WriteCoord(msg, origin[0]);
+	MSG_WriteCoord(msg, origin[1]);
+	MSG_WriteCoord(msg, origin[2]);
+}
+
+static int SV_HookStateRecordType(client_t *client, int playernum)
+{
+	client_t *hook_client;
+
+	hook_client = &svs.clients[playernum];
+	if (hook_client->state == cs_spawned && hook_client->hook_state != mvd_hook_inactive) {
+		if (client->hook_sent_state[playernum] != hook_client->hook_state) {
+			return mvd_hook_record_full;
+		}
+		if (hook_client->hook_state == mvd_hook_anchored
+				&& ((client->netchan.outgoing_sequence + playernum) & 7) == 0) {
+			return mvd_hook_record_full;
+		}
+		return mvd_hook_record_update;
+	}
+
+	if (client->hook_sent_state[playernum] != mvd_hook_inactive) {
+		return mvd_hook_record_clear;
+	}
+
+	return 0;
+}
+
+static void SV_WriteHookStateUpdate(sizebuf_t *msg, int playernum, client_t *hook_client, int record_type)
+{
+	MSG_WriteByte(msg, playernum);
+	MSG_WriteByte(msg, record_type);
+
+	if (record_type == mvd_hook_record_clear) {
+		return;
+	}
+
+	MSG_WriteByte(msg, hook_client->hook_state);
+	MSG_WriteByte(msg, hook_client->hook_flags);
+	SV_WriteHookStateCoords(msg, hook_client->hook_origin);
+	SV_WriteHookStateCoords(msg, hook_client->hook_anchor);
+
+	if (record_type == mvd_hook_record_full) {
+		MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_time));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_length));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_radial_speed));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_tangential_speed));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_speed));
+		MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_tension));
+		MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_awaytime));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_min_pull));
+		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_max_pull));
+	}
+}
+
 static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg)
 {
 	int i;
@@ -913,9 +991,13 @@ static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg
 
 	count = 0;
 	for (i = 0; i < MAX_CLIENTS; i++) {
-		if (svs.clients[i].state == cs_spawned && svs.clients[i].hook_state != mvd_hook_inactive) {
+		if (SV_HookStateRecordType(client, i)) {
 			count++;
 		}
+	}
+
+	if (!count) {
+		return;
 	}
 
 	MSG_WriteByte(msg, svc_mvd_hookstate);
@@ -923,27 +1005,16 @@ static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg
 
 	for (i = 0; i < MAX_CLIENTS; i++) {
 		client_t *hook_client;
+		int record_type;
 
 		hook_client = &svs.clients[i];
-		if (hook_client->state != cs_spawned || hook_client->hook_state == mvd_hook_inactive) {
+		record_type = SV_HookStateRecordType(client, i);
+		if (!record_type) {
 			continue;
 		}
 
-		MSG_WriteByte(msg, i);
-		MSG_WriteByte(msg, hook_client->hook_state);
-		MSG_WriteFloat(msg, hook_client->hook_origin[0]);
-		MSG_WriteFloat(msg, hook_client->hook_origin[1]);
-		MSG_WriteFloat(msg, hook_client->hook_origin[2]);
-		MSG_WriteFloat(msg, hook_client->hook_anchor[0]);
-		MSG_WriteFloat(msg, hook_client->hook_anchor[1]);
-		MSG_WriteFloat(msg, hook_client->hook_anchor[2]);
-		MSG_WriteFloat(msg, hook_client->hook_time);
-		MSG_WriteFloat(msg, hook_client->hook_initial_length);
-		MSG_WriteFloat(msg, hook_client->hook_initial_radial_speed);
-		MSG_WriteFloat(msg, hook_client->hook_initial_tangential_speed);
-		MSG_WriteFloat(msg, hook_client->hook_initial_speed);
-		MSG_WriteFloat(msg, hook_client->hook_tension);
-		MSG_WriteFloat(msg, hook_client->hook_awaytime);
+		SV_WriteHookStateUpdate(msg, i, hook_client, record_type);
+		client->hook_sent_state[i] = (record_type == mvd_hook_record_clear) ? mvd_hook_inactive : hook_client->hook_state;
 	}
 }
 #endif

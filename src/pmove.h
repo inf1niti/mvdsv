@@ -68,6 +68,8 @@ typedef struct {
 	float		hook_initial_speed;
 	float		hook_tension;
 	float		hook_awaytime;
+	float		hook_min_pull;
+	float		hook_max_pull;
 
 	// results
 	int			numtouch;

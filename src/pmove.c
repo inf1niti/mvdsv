@@ -571,8 +571,8 @@ static void PM_HookMove(void)
 	useGroundBias = wasOnGround && (uv_hook[2] > HOOK_GROUND_DETACH_MIN_UP);
 	PM_HookGetPullVector(uv_hook, wasOnGround, uv_pull);
 	pmove.onground = false;
-	minPull = HOOK_INIT_PULL_SPEED;
-	maxPull = HOOK_PULL_SPEED;
+	minPull = (pmove.hook_min_pull > 0) ? pmove.hook_min_pull : HOOK_INIT_PULL_SPEED;
+	maxPull = (pmove.hook_max_pull > 0) ? pmove.hook_max_pull : HOOK_PULL_SPEED;
 	wishAlign = PM_HookMovementInfluence(uv_pull, wishDir, tangentDir);
 	forwardHeld = pmove.cmd.forwardmove > 0;
 
