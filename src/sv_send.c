@@ -980,6 +980,7 @@ static void SV_WriteHookStateUpdate(sizebuf_t *msg, int playernum, client_t *hoo
 		MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_awaytime));
 		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_min_pull));
 		MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_max_pull));
+		MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_pull_time));
 	}
 }
 

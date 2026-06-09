@@ -3788,6 +3788,7 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 	pmove.hook_awaytime = sv_client->hook_awaytime;
 	pmove.hook_min_pull = sv_client->hook_min_pull;
 	pmove.hook_max_pull = sv_client->hook_max_pull;
+	pmove.hook_pull_time = sv_client->hook_pull_time;
 #endif
 	
 	// let KTeams "broken ankle" code work
@@ -3851,6 +3852,7 @@ FIXME
 	sv_client->hook_time = pmove.hook_time;
 	sv_client->hook_tension = pmove.hook_tension;
 	sv_client->hook_awaytime = pmove.hook_awaytime;
+	sv_client->hook_pull_time = pmove.hook_pull_time;
 #endif
 	sv_player->v->teleport_time = pmove.waterjumptime;
 	if (pr_nqprogs)

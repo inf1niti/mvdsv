@@ -70,6 +70,7 @@ typedef struct {
 	float		hook_awaytime;
 	float		hook_min_pull;
 	float		hook_max_pull;
+	float		hook_pull_time;
 
 	// results
 	int			numtouch;

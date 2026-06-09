@@ -404,6 +404,7 @@ typedef struct client_s
 	float           hook_awaytime;
 	float           hook_min_pull;
 	float           hook_max_pull;
+	float           hook_pull_time;
 	unsigned int    hook_update_sequence;
 	byte            hook_sent_state[MAX_CLIENTS];
 	unsigned int    hook_sent_sequence[MAX_CLIENTS];
