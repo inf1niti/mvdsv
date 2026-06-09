@@ -87,6 +87,8 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.70f
 #define HOOK_INPUT_BACK_REEL_DECAY 1.25f
 #define HOOK_INPUT_FORWARD_REEL_SCALE 5.0f
+#define HOOK_INPUT_BACK_GROUND_CHECK 56
+#define HOOK_INPUT_BACK_GROUND_MIN_REEL 0.22f
 
 #define HOOK_TENSION_INPUT_GAIN     320
 #define HOOK_TENSION_AWAY_GAIN      0.65f
@@ -278,6 +280,28 @@ static void PM_HookUpdatePullTime(qbool backHeld, qbool forwardHeld)
 	pmove.hook_pull_time = min(pmove.hook_pull_time + pm_frametime * scale, HOOK_ACCEL_TIME);
 }
 
+static float PM_HookBackReelScale(qbool wasOnGround)
+{
+	vec3_t end;
+	trace_t trace;
+	float groundScale, reelScale;
+
+	reelScale = bound(0, pmove.hook_pull_time / HOOK_ACCEL_TIME, 1);
+	if (wasOnGround) {
+		return max(reelScale, HOOK_INPUT_BACK_GROUND_MIN_REEL);
+	}
+
+	VectorCopy(pmove.origin, end);
+	end[2] -= HOOK_INPUT_BACK_GROUND_CHECK;
+	trace = PM_PlayerTrace(pmove.origin, end);
+	if (trace.fraction == 1 || trace.plane.normal[2] < MIN_STEP_NORMAL) {
+		return reelScale;
+	}
+
+	groundScale = (1.0f - trace.fraction) * HOOK_INPUT_BACK_GROUND_MIN_REEL;
+	return max(reelScale, groundScale);
+}
+
 static float PM_HookMovementInfluence(vec3_t uv_hook, vec3_t wishDir, vec3_t tangentDir)
 {
 	vec3_t controlDir;
@@ -391,7 +415,7 @@ static float PM_HookPreservedRadialPullTarget(float radialSpeed, float targetSpe
 }
 
 static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull,
-		float wishAlign, qbool backHeld, qbool forwardHeld)
+		float wishAlign, qbool backHeld, qbool forwardHeld, qbool wasOnGround)
 {
 	vec3_t radialVel, tangentialVel;
 	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign;
@@ -402,7 +426,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 
 	targetSpeed = PM_HookTargetPullSpeed(minPull, maxPull);
 	if (backHeld) {
-		targetSpeed = min(radialSpeed, 0);
+		targetSpeed *= PM_HookBackReelScale(wasOnGround);
 	}
 	else {
 		targetSpeed += bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
@@ -602,7 +626,7 @@ static qbool PM_HookMove(void)
 	backHeld = pmove.cmd.forwardmove < 0;
 	forwardHeld = pmove.cmd.forwardmove > 0;
 
-	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, backHeld, forwardHeld);
+	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, backHeld, forwardHeld, wasOnGround);
 	PM_HookApplyInputControl(tangentDir, wishAlign, forwardHeld);
 	if (useGroundBias) {
 		PM_HookApplyGroundBias(uv_pull, maxPull);
