@@ -45,14 +45,6 @@ int fofs_trackent;
 int fofs_visibility;
 int fofs_hide_players;
 int fofs_teleported;
-int fofs_hook;
-int fofs_hook_out;
-int fofs_on_hook;
-int fofs_hook_reset_time;
-int fofs_hook_initial_length;
-int fofs_hook_initial_radial_speed;
-int fofs_hook_initial_tangential_speed;
-int fofs_hook_initial_speed;
 
 /*
 ================
@@ -415,14 +407,6 @@ void SV_SpawnServer(char *mapname, qbool devmap, char* entityfile, qbool loading
 	fofs_visibility = ED_FindFieldOffset ("visclients");
 	fofs_hide_players = ED_FindFieldOffset ("hideplayers");
 	fofs_teleported = ED_FindFieldOffset ("teleported");
-	fofs_hook = ED_FindFieldOffset ("hook");
-	fofs_hook_out = ED_FindFieldOffset ("hook_out");
-	fofs_on_hook = ED_FindFieldOffset ("on_hook");
-	fofs_hook_reset_time = ED_FindFieldOffset ("hook_reset_time");
-	fofs_hook_initial_length = ED_FindFieldOffset ("hook_initial_length");
-	fofs_hook_initial_radial_speed = ED_FindFieldOffset ("hook_initial_radial_speed");
-	fofs_hook_initial_tangential_speed = ED_FindFieldOffset ("hook_initial_tangential_speed");
-	fofs_hook_initial_speed = ED_FindFieldOffset ("hook_initial_speed");
 
 #ifdef MVD_PEXT1_HIGHLAGTELEPORT
 	if (fofs_teleported) {

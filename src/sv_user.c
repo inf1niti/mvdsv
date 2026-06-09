@@ -3617,150 +3617,6 @@ static void SV_ApplySafestrafe(client_t *cl, usercmd_t *ucmd)
 	cl->safestrafe.last_sidemove = ucmd->sidemove;
 }
 
-#ifdef MVD_PEXT1_PREDICTED_HOOK
-#define SV_HOOK_EPSILON 0.000001f
-
-static void SV_PredictedHookClear(client_t *cl)
-{
-	cl->hook_state = mvd_hook_inactive;
-	cl->hook_wasfiring = false;
-	VectorClear(cl->hook_origin);
-	VectorClear(cl->hook_velocity);
-	VectorClear(cl->hook_anchor);
-	cl->hook_time = 0;
-	cl->hook_initial_length = 0;
-	cl->hook_initial_radial_speed = 0;
-	cl->hook_initial_tangential_speed = 0;
-	cl->hook_initial_speed = 0;
-	cl->hook_tension = 0;
-	cl->hook_awaytime = 0;
-	cl->hook_cooldown_end_time = 0;
-	cl->hook_retract_end_time = 0;
-}
-
-static edict_t *SV_PredictedHookEntity(client_t *cl)
-{
-	eval_t *field;
-	edict_t *hook;
-
-	if (!fofs_hook) {
-		return NULL;
-	}
-
-	field = (eval_t *)((byte *)cl->edict->v + fofs_hook);
-	if (!field->edict) {
-		return NULL;
-	}
-	if (field->edict < 0 || field->edict >= sv.max_edicts * pr_edict_size) {
-		return NULL;
-	}
-
-	hook = PROG_TO_EDICT(field->edict);
-	if (hook == sv.edicts || hook->e.free) {
-		return NULL;
-	}
-
-	return hook;
-}
-
-static void SV_PredictedHookDecompose(vec3_t velocity, vec3_t uv_hook, vec3_t radialVel, vec3_t tangentialVel, float *radialSpeed)
-{
-	*radialSpeed = DotProduct(velocity, uv_hook);
-	VectorScale(uv_hook, *radialSpeed, radialVel);
-	VectorSubtract(velocity, radialVel, tangentialVel);
-}
-
-static void SV_PredictedHookCaptureAnchor(client_t *cl, edict_t *hook)
-{
-	vec3_t hookVector;
-	vec3_t uv_hook;
-	vec3_t radialVel;
-	vec3_t tangentialVel;
-	float radialSpeed;
-	entvars_t *ent;
-
-	ent = cl->edict->v;
-	VectorSubtract(hook->v->origin, ent->origin, hookVector);
-	VectorCopy(hookVector, uv_hook);
-	cl->hook_initial_length = VectorNormalize(uv_hook);
-	if (cl->hook_initial_length < SV_HOOK_EPSILON) {
-		return;
-	}
-
-	SV_PredictedHookDecompose(ent->velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
-	cl->hook_time = 0;
-	cl->hook_tension = 0;
-	cl->hook_awaytime = 0;
-	cl->hook_initial_radial_speed = fofs_hook_initial_radial_speed ?
-			EdictFieldFloat(cl->edict, fofs_hook_initial_radial_speed) : max(0, radialSpeed);
-	cl->hook_initial_tangential_speed = fofs_hook_initial_tangential_speed ?
-			EdictFieldFloat(cl->edict, fofs_hook_initial_tangential_speed) : VectorLength(tangentialVel);
-	cl->hook_initial_speed = fofs_hook_initial_speed ?
-			EdictFieldFloat(cl->edict, fofs_hook_initial_speed) : VectorLength(ent->velocity);
-	if (fofs_hook_initial_length) {
-		cl->hook_initial_length = EdictFieldFloat(cl->edict, fofs_hook_initial_length);
-	}
-}
-
-static void SV_PredictedHookSyncFromProgs(client_t *cl)
-{
-	edict_t *hook;
-	qbool hook_out;
-	qbool on_hook;
-	int old_state;
-	float hook_reset_time;
-
-	if (!sv_rctf_hook.value) {
-		SV_PredictedHookClear(cl);
-		return;
-	}
-
-	if (!((int)cl->edict->v->items & IT_HOOK) || cl->edict->v->health <= 0) {
-		SV_PredictedHookClear(cl);
-		return;
-	}
-
-	hook = SV_PredictedHookEntity(cl);
-	hook_out = fofs_hook_out && EdictFieldFloat(cl->edict, fofs_hook_out);
-	on_hook = fofs_on_hook && EdictFieldFloat(cl->edict, fofs_on_hook);
-	hook_reset_time = fofs_hook_reset_time ? EdictFieldFloat(cl->edict, fofs_hook_reset_time) : 0;
-
-	if (hook_out && hook) {
-		old_state = cl->hook_state;
-		VectorCopy(hook->v->origin, cl->hook_origin);
-		VectorCopy(hook->v->origin, cl->hook_anchor);
-		VectorClear(cl->hook_velocity);
-		cl->hook_cooldown_end_time = 0;
-		cl->hook_retract_end_time = 0;
-		cl->hook_state = on_hook ? mvd_hook_anchored : mvd_hook_thrown;
-		if (on_hook && old_state != mvd_hook_anchored) {
-			SV_PredictedHookCaptureAnchor(cl, hook);
-		}
-		if (on_hook && cl->hook_initial_length <= SV_HOOK_EPSILON) {
-			SV_PredictedHookCaptureAnchor(cl, hook);
-		}
-		return;
-	}
-
-	if (hook_reset_time > sv.time) {
-		cl->hook_state = mvd_hook_retracting;
-		cl->hook_retract_end_time = hook_reset_time;
-		cl->hook_cooldown_end_time = hook_reset_time;
-		if (hook) {
-			VectorCopy(hook->v->origin, cl->hook_origin);
-		}
-		else {
-			VectorCopy(cl->edict->v->origin, cl->hook_origin);
-		}
-		VectorCopy(cl->edict->v->origin, cl->hook_anchor);
-		VectorClear(cl->hook_velocity);
-		return;
-	}
-
-	SV_PredictedHookClear(cl);
-}
-#endif
-
 /*
 ===========
 SV_RunCmd
@@ -3906,10 +3762,6 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 		SV_RunThink (sv_player);
 	}
 
-#ifdef MVD_PEXT1_PREDICTED_HOOK
-	SV_PredictedHookSyncFromProgs(sv_client);
-#endif
-
 	// copy player state to pmove
 	VectorSubtract (sv_player->v->mins, player_mins, offset);
 	VectorAdd (sv_player->v->origin, offset, pmove.origin);
@@ -3922,6 +3774,9 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 	pmove.jump_held = sv_client->jump_held;
 	pmove.jump_msec = 0;
 #ifdef MVD_PEXT1_PREDICTED_HOOK
+	if (!sv_rctf_hook.value) {
+		sv_client->hook_state = mvd_hook_inactive;
+	}
 	pmove.hook_state = sv_client->hook_state;
 	VectorCopy(sv_client->hook_anchor, pmove.hook_anchor);
 	pmove.hook_time = sv_client->hook_time;
@@ -4354,10 +4209,6 @@ void SV_PostRunCmd(void)
 			SV_RunNQNewmis ();
 		else
 			SV_RunNewmis ();
-
-#ifdef MVD_PEXT1_PREDICTED_HOOK
-		SV_PredictedHookSyncFromProgs(sv_client);
-#endif
 
 #ifdef MVD_PEXT1_SERVERSIDEWEAPON
 		SV_ServerSideWeaponLogic_PostPostThink(sv_client, &ssw);

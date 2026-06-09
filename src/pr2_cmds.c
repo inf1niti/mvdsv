@@ -57,12 +57,30 @@ static float GETFLOAT(int i)
 #endif
 
 typedef intptr_t (*ext_syscall_t)(intptr_t *arg);
+
+typedef struct rctf_hook_state_s
+{
+	int state;
+	vec3_t origin;
+	vec3_t anchor;
+	float hook_time;
+	float initial_length;
+	float initial_radial_speed;
+	float initial_tangential_speed;
+	float initial_speed;
+	float tension;
+	float awaytime;
+} rctf_hook_state_t;
+
 #ifdef FTE_PEXT_CSQC
 static intptr_t EXT_SetSendNeeded(intptr_t *args);
 #endif
 static intptr_t EXT_MapExtFieldPtr(intptr_t *args);
 static intptr_t EXT_SetExtFieldPtr(intptr_t *args);
 static intptr_t EXT_GetExtFieldPtr(intptr_t *args);
+static intptr_t EXT_RCTFHookState(intptr_t *args);
+extern cvar_t sv_rctf_hook;
+
 struct
 {
 	char *extname;
@@ -72,6 +90,7 @@ struct
 	{"MapExtFieldPtr",	EXT_MapExtFieldPtr},
 	{"SetExtFieldPtr",	EXT_SetExtFieldPtr},
 	{"GetExtFieldPtr",	EXT_GetExtFieldPtr},
+	{"rctfhookstate",	EXT_RCTFHookState},
 #ifdef FTE_PEXT_CSQC
 	{"setsendneeded",		EXT_SetSendNeeded},
 #endif
@@ -2074,6 +2093,71 @@ static intptr_t EXT_GetExtFieldPtr(intptr_t *args)
 
 	e = &sv.edicts[NUM_FOR_GAME_EDICT(VM_ArgPtr(args[1]))];
 	memcpy(VM_ArgPtr(args[3]), (byte*)&e->xv + field_ref, size);
+
+	return 1;
+}
+
+static void EXT_ClearRCTFHookState(client_t *cl)
+{
+	cl->hook_state = mvd_hook_inactive;
+	cl->hook_wasfiring = false;
+	VectorClear(cl->hook_origin);
+	VectorClear(cl->hook_velocity);
+	VectorClear(cl->hook_anchor);
+	cl->hook_time = 0;
+	cl->hook_initial_length = 0;
+	cl->hook_initial_radial_speed = 0;
+	cl->hook_initial_tangential_speed = 0;
+	cl->hook_initial_speed = 0;
+	cl->hook_tension = 0;
+	cl->hook_awaytime = 0;
+	cl->hook_cooldown_end_time = 0;
+	cl->hook_retract_end_time = 0;
+}
+
+static intptr_t EXT_RCTFHookState(intptr_t *args)
+{
+	int entnum;
+	client_t *cl;
+	rctf_hook_state_t *state;
+
+	entnum = args[1];
+	if (entnum < 1 || entnum > MAX_CLIENTS)
+	{
+		return 0;
+	}
+
+	cl = &svs.clients[entnum - 1];
+	if (args[3] < sizeof(*state) || cl->state != cs_spawned)
+	{
+		return 0;
+	}
+
+	VM_CheckBounds(sv_vm, args[2], args[3]);
+	state = (rctf_hook_state_t *)VMA(2);
+
+	if (!sv_rctf_hook.value || state->state == mvd_hook_inactive)
+	{
+		EXT_ClearRCTFHookState(cl);
+		return 1;
+	}
+
+	if (state->state < mvd_hook_inactive || state->state > mvd_hook_cooldown)
+	{
+		return 0;
+	}
+
+	cl->hook_state = state->state;
+	VectorCopy(state->origin, cl->hook_origin);
+	VectorCopy(state->anchor, cl->hook_anchor);
+	VectorClear(cl->hook_velocity);
+	cl->hook_time = state->hook_time;
+	cl->hook_initial_length = state->initial_length;
+	cl->hook_initial_radial_speed = state->initial_radial_speed;
+	cl->hook_initial_tangential_speed = state->initial_tangential_speed;
+	cl->hook_initial_speed = state->initial_speed;
+	cl->hook_tension = state->tension;
+	cl->hook_awaytime = state->awaytime;
 
 	return 1;
 }
