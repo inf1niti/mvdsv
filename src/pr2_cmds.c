@@ -2147,6 +2147,13 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 		return 0;
 	}
 
+	if (cl->hook_state == state->state && state->state == mvd_hook_anchored)
+	{
+		VectorCopy(state->origin, cl->hook_origin);
+		VectorCopy(state->anchor, cl->hook_anchor);
+		return 1;
+	}
+
 	cl->hook_state = state->state;
 	VectorCopy(state->origin, cl->hook_origin);
 	VectorCopy(state->anchor, cl->hook_anchor);
