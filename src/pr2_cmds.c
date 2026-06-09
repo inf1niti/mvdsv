@@ -100,6 +100,43 @@ struct
 };
 ext_syscall_t ext_syscall_tbl[256];
 
+static short EXT_RCTFHookStateShort(float value)
+{
+	if (value > 32767) {
+		return 32767;
+	}
+	if (value < -32768) {
+		return -32768;
+	}
+	return (short)value;
+}
+
+static qbool EXT_RCTFHookCoordChanged(float a, float b)
+{
+	coorddata ca, cb;
+
+	ca = MSG_ToCoord(a, msg_coordsize);
+	cb = MSG_ToCoord(b, msg_coordsize);
+	return memcmp(&ca, &cb, msg_coordsize) != 0;
+}
+
+static qbool EXT_RCTFHookVectorChanged(vec3_t a, vec3_t b)
+{
+	return EXT_RCTFHookCoordChanged(a[0], b[0])
+			|| EXT_RCTFHookCoordChanged(a[1], b[1])
+			|| EXT_RCTFHookCoordChanged(a[2], b[2]);
+}
+
+static qbool EXT_RCTFHookVisualChanged(client_t *cl, rctf_hook_state_t *state)
+{
+	return cl->hook_state != state->state
+			|| cl->hook_flags != state->flags
+			|| EXT_RCTFHookVectorChanged(cl->hook_origin, state->origin)
+			|| EXT_RCTFHookVectorChanged(cl->hook_anchor, state->anchor)
+			|| EXT_RCTFHookStateShort(cl->hook_min_pull) != EXT_RCTFHookStateShort(state->min_pull)
+			|| EXT_RCTFHookStateShort(cl->hook_max_pull) != EXT_RCTFHookStateShort(state->max_pull);
+}
+
 int NUM_FOR_GAME_EDICT(byte *e)
 {
 	int b;
@@ -2117,6 +2154,7 @@ static void EXT_ClearRCTFHookState(client_t *cl)
 	cl->hook_awaytime = 0;
 	cl->hook_min_pull = 0;
 	cl->hook_max_pull = 0;
+	cl->hook_update_sequence = 0;
 	cl->hook_cooldown_end_time = 0;
 	cl->hook_retract_end_time = 0;
 }
@@ -2151,6 +2189,11 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 	if (state->state < mvd_hook_inactive || state->state > mvd_hook_cooldown)
 	{
 		return 0;
+	}
+
+	if (EXT_RCTFHookVisualChanged(cl, state))
+	{
+		cl->hook_update_sequence++;
 	}
 
 	if (cl->hook_state == state->state && state->state == mvd_hook_anchored)

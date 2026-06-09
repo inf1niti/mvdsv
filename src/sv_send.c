@@ -943,7 +943,10 @@ static int SV_HookStateRecordType(client_t *client, int playernum)
 				&& ((client->netchan.outgoing_sequence + playernum) & 7) == 0) {
 			return mvd_hook_record_full;
 		}
-		return mvd_hook_record_update;
+		if (client->hook_sent_sequence[playernum] != hook_client->hook_update_sequence) {
+			return mvd_hook_record_update;
+		}
+		return 0;
 	}
 
 	if (client->hook_sent_state[playernum] != mvd_hook_inactive) {
@@ -1015,6 +1018,7 @@ static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg
 
 		SV_WriteHookStateUpdate(msg, i, hook_client, record_type);
 		client->hook_sent_state[i] = (record_type == mvd_hook_record_clear) ? mvd_hook_inactive : hook_client->hook_state;
+		client->hook_sent_sequence[i] = (record_type == mvd_hook_record_clear) ? 0 : hook_client->hook_update_sequence;
 	}
 }
 #endif
