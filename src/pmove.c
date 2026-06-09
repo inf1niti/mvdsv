@@ -541,7 +541,7 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 	}
 }
 
-static void PM_HookMove(void)
+static qbool PM_HookMove(void)
 {
 	vec3_t hookVector;
 	vec3_t uv_hook;
@@ -557,14 +557,14 @@ static void PM_HookMove(void)
 	qbool forwardHeld;
 
 	if (pmove.hook_state != mvd_hook_anchored) {
-		return;
+		return false;
 	}
 
 	VectorSubtract(pmove.hook_anchor, pmove.origin, hookVector);
 	VectorCopy(hookVector, uv_hook);
 	distanceToHook = VectorNormalize(uv_hook);
 	if (distanceToHook < HOOK_EPSILON) {
-		return;
+		return false;
 	}
 
 	wasOnGround = pmove.onground;
@@ -586,6 +586,7 @@ static void PM_HookMove(void)
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
 	PM_HookCapVelocity(uv_pull, maxPull);
+	return true;
 }
 
 //The basic solid body movement clip that slides along multiple planes
@@ -1391,6 +1392,8 @@ static void PM_SpectatorMove(void)
 int PM_PlayerMove(void)
 {
 	int blocked = 0;
+	int hook_forwardmove = 0;
+	qbool hook_controls_forward = false;
 
 #ifndef SERVERONLY
 #ifdef EXPERIMENTAL_SHOW_ACCELERATION
@@ -1442,7 +1445,11 @@ int PM_PlayerMove(void)
 	PM_CheckJump();
 
 	PM_Friction();
-	PM_HookMove();
+	hook_forwardmove = pmove.cmd.forwardmove;
+	hook_controls_forward = PM_HookMove();
+	if (hook_controls_forward) {
+		pmove.cmd.forwardmove = 0;
+	}
 
 	if (pmove.waterlevel >= 2)
 		blocked = PM_WaterMove();
@@ -1450,6 +1457,7 @@ int PM_PlayerMove(void)
 		blocked = PM_FlyMove();
 	else
 		blocked = PM_AirMove();
+	pmove.cmd.forwardmove = hook_forwardmove;
 
 	// set onground, watertype, and waterlevel for final spot
 	PM_CategorizePosition();
