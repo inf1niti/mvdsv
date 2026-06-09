@@ -81,11 +81,12 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_BACK_PULL_SCALE 0.55f
 #define HOOK_INPUT_BACK_RESIST_SCALE 0.85f
 #define HOOK_INPUT_BACK_GRAVITY_FACTOR 0.65f
-#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.12f
-#define HOOK_INPUT_FORWARD_TANGENTIAL_SCALE 0.65f
-#define HOOK_INPUT_FORWARD_GRAVITY_SCALE 0.65f
-#define HOOK_INPUT_BACK_REEL_DECAY 3.0f
-#define HOOK_INPUT_FORWARD_REEL_SCALE 4.0f
+#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.25f
+#define HOOK_INPUT_FORWARD_TANGENTIAL_SCALE 0.50f
+#define HOOK_INPUT_FORWARD_GRAVITY_SCALE 0.50f
+#define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.70f
+#define HOOK_INPUT_BACK_REEL_DECAY 1.25f
+#define HOOK_INPUT_FORWARD_REEL_SCALE 5.0f
 
 #define HOOK_TENSION_INPUT_GAIN     320
 #define HOOK_TENSION_AWAY_GAIN      0.65f
@@ -273,7 +274,7 @@ static void PM_HookUpdatePullTime(qbool backHeld, qbool forwardHeld)
 		return;
 	}
 
-	scale = forwardHeld ? HOOK_INPUT_FORWARD_REEL_SCALE : 1.0f;
+	scale = forwardHeld ? HOOK_INPUT_FORWARD_REEL_SCALE : HOOK_INPUT_NEUTRAL_REEL_SCALE;
 	pmove.hook_pull_time = min(pmove.hook_pull_time + pm_frametime * scale, HOOK_ACCEL_TIME);
 }
 
@@ -401,7 +402,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 
 	targetSpeed = PM_HookTargetPullSpeed(minPull, maxPull);
 	if (backHeld) {
-		targetSpeed = 0;
+		targetSpeed = min(radialSpeed, 0);
 	}
 	else {
 		targetSpeed += bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
@@ -528,7 +529,7 @@ static void PM_HookApplyOscillation(vec3_t uv_hook, float distanceToHook)
 	VectorAdd(radialVel, tangentialVel, pmove.velocity);
 }
 
-static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull, qbool backHeld)
+static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 {
 	vec3_t radialVel;
 	vec3_t tangentialVel;
@@ -543,9 +544,6 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull, qbool backHeld)
 	preserveFactor = PM_HookPreserveFactor();
 
 	radialCap = PM_HookPreservedCap(maxPull * HOOK_RADIAL_SPEED_CAP, pmove.hook_initial_radial_speed, preserveFactor);
-	if (backHeld) {
-		radialCap = 0;
-	}
 	radialSpeed = bound(-(maxPull * HOOK_RADIAL_AWAY_CAP), radialSpeed, radialCap);
 	VectorScale(uv_hook, radialSpeed, radialVel);
 
@@ -613,7 +611,7 @@ static qbool PM_HookMove(void)
 		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, forwardHeld);
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
-	PM_HookCapVelocity(uv_pull, maxPull, backHeld);
+	PM_HookCapVelocity(uv_pull, maxPull);
 	return true;
 }
 
