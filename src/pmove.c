@@ -549,19 +549,12 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 		targetSpeed *= 1.0f + ((1.0f - holdEffect) * pullWishAlign * HOOK_INPUT_BACK_PULL_SCALE);
 	}
 
-	tensionBoost = 0;
-	if (holdEffect > 0) {
-		pmove.hook_awaytime = 0;
-		pmove.hook_tension = 0;
-	}
-	else {
-		PM_HookUpdateSlack(pullWishAlign, distanceToHook);
-		tensionBoost = PM_HookUpdateTension(pullWishAlign, radialSpeed, maxPull);
-		slackFraction = PM_HookSlackFactor();
-		if (slackFraction > 0) {
-			slackScale = HOOK_MIN_INERTIA + fabs(pullWishAlign) * (HOOK_MAX_INERTIA - HOOK_MIN_INERTIA);
-			targetSpeed *= 1.0f - (slackFraction * slackScale);
-		}
+	PM_HookUpdateSlack(pullWishAlign, distanceToHook);
+	tensionBoost = PM_HookUpdateTension(pullWishAlign, radialSpeed, maxPull);
+	slackFraction = PM_HookSlackFactor();
+	if (slackFraction > 0) {
+		slackScale = HOOK_MIN_INERTIA + fabs(pullWishAlign) * (HOOK_MAX_INERTIA - HOOK_MIN_INERTIA);
+		targetSpeed *= 1.0f - (slackFraction * slackScale);
 	}
 
 	targetSpeed += tensionBoost;

@@ -947,6 +947,9 @@ static int SV_HookStateRecordType(client_t *client, int playernum)
 		if (client->hook_sent_sequence[playernum] != hook_client->hook_update_sequence) {
 			return mvd_hook_record_update;
 		}
+		if (hook_client->hook_state == mvd_hook_anchored && client == hook_client) {
+			return mvd_hook_record_owner_state;
+		}
 		return 0;
 	}
 
@@ -957,12 +960,45 @@ static int SV_HookStateRecordType(client_t *client, int playernum)
 	return 0;
 }
 
+static void SV_WriteHookOwnerState(sizebuf_t *msg, client_t *hook_client)
+{
+	int flags;
+
+	flags = (hook_client->hook_hold_washeld ? 1 : 0)
+			| (hook_client->hook_reel_washeld ? 2 : 0);
+
+	MSG_WriteByte(msg, hook_client->hook_state);
+	MSG_WriteByte(msg, hook_client->hook_flags);
+	SV_WriteHookStateCoords(msg, hook_client->hook_anchor);
+	MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_time));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_length));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_radial_speed));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_tangential_speed));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_initial_speed));
+	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_tension));
+	MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_awaytime));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_rope_length));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_min_pull));
+	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_max_pull));
+	MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_pull_time));
+	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_hold_blend));
+	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_reel_blend));
+	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_reel_pull_blend));
+	MSG_WriteByte(msg, hook_client->hook_input_mode);
+	MSG_WriteByte(msg, flags);
+}
+
 static void SV_WriteHookStateUpdate(sizebuf_t *msg, int playernum, client_t *hook_client, int record_type)
 {
 	MSG_WriteByte(msg, playernum);
 	MSG_WriteByte(msg, record_type);
 
 	if (record_type == mvd_hook_record_clear) {
+		return;
+	}
+
+	if (record_type == mvd_hook_record_owner_state) {
+		SV_WriteHookOwnerState(msg, hook_client);
 		return;
 	}
 
@@ -1020,7 +1056,12 @@ static void SV_WritePredictedHookStatesToClient(client_t *client, sizebuf_t *msg
 
 		SV_WriteHookStateUpdate(msg, i, hook_client, record_type);
 		client->hook_sent_state[i] = (record_type == mvd_hook_record_clear) ? mvd_hook_inactive : hook_client->hook_state;
-		client->hook_sent_sequence[i] = (record_type == mvd_hook_record_clear) ? 0 : hook_client->hook_update_sequence;
+		if (record_type == mvd_hook_record_clear) {
+			client->hook_sent_sequence[i] = 0;
+		}
+		else if (record_type != mvd_hook_record_owner_state) {
+			client->hook_sent_sequence[i] = hook_client->hook_update_sequence;
+		}
 	}
 }
 #endif
