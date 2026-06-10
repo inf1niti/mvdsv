@@ -327,6 +327,9 @@ static void PM_HookUpdateInputMode(qbool holdHeld, qbool reelHeld)
 
 static void PM_HookUpdateInputBlends(qbool holdHeld, qbool reelHeld)
 {
+	qbool reelReleased;
+
+	reelReleased = pmove.hook_reel_washeld && !reelHeld;
 	PM_HookUpdateInputMode(holdHeld, reelHeld);
 	holdHeld = pmove.hook_input_mode == HOOK_INPUT_HOLD;
 	reelHeld = pmove.hook_input_mode == HOOK_INPUT_REEL;
@@ -337,6 +340,10 @@ static void PM_HookUpdateInputBlends(qbool holdHeld, qbool reelHeld)
 			HOOK_ACCEL_TIME, HOOK_INPUT_EASE_OUT_TIME);
 	pmove.hook_reel_pull_blend = PM_HookApproachBlend(pmove.hook_reel_pull_blend, reelHeld,
 			HOOK_INPUT_REEL_PULL_EASE_TIME, HOOK_INPUT_EASE_OUT_TIME);
+	if (reelReleased) {
+		pmove.hook_reel_blend = 0;
+		pmove.hook_reel_pull_blend = 0;
+	}
 }
 
 static void PM_HookUpdatePullTime(float holdBlend, float reelPullBlend)
