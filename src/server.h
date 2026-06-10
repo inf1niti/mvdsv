@@ -407,6 +407,7 @@ typedef struct client_s
 	float           hook_pull_time;
 	float           hook_hold_blend;
 	float           hook_reel_blend;
+	float           hook_reel_pull_blend;
 	int             hook_input_mode;
 	qbool           hook_hold_washeld;
 	qbool           hook_reel_washeld;
