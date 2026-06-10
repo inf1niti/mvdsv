@@ -2153,6 +2153,7 @@ static void EXT_ClearRCTFHookState(client_t *cl)
 	cl->hook_initial_speed = 0;
 	cl->hook_tension = 0;
 	cl->hook_awaytime = 0;
+	cl->hook_rope_length = 0;
 	cl->hook_min_pull = 0;
 	cl->hook_max_pull = 0;
 	cl->hook_pull_time = 0;
@@ -2227,6 +2228,7 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 	cl->hook_initial_speed = state->initial_speed;
 	cl->hook_tension = state->tension;
 	cl->hook_awaytime = state->awaytime;
+	cl->hook_rope_length = 0;
 	cl->hook_min_pull = state->min_pull;
 	cl->hook_max_pull = state->max_pull;
 	cl->hook_pull_time = state->pull_time;

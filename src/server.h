@@ -402,6 +402,7 @@ typedef struct client_s
 	float           hook_initial_speed;
 	float           hook_tension;
 	float           hook_awaytime;
+	float           hook_rope_length;
 	float           hook_min_pull;
 	float           hook_max_pull;
 	float           hook_pull_time;
