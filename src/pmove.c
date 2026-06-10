@@ -81,17 +81,18 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_BACK_PULL_SCALE 0.55f
 #define HOOK_INPUT_BACK_RESIST_SCALE 0.85f
 #define HOOK_INPUT_BACK_GRAVITY_FACTOR 0.65f
-#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.32f
-#define HOOK_INPUT_FORWARD_TANGENTIAL_SCALE 0.55f
-#define HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING 0.993f
-#define HOOK_INPUT_FORWARD_GRAVITY_SCALE 0.55f
+#define HOOK_INPUT_REEL_RADIAL_BOOST 0.26f
+#define HOOK_INPUT_REEL_TANGENTIAL_SCALE 0.65f
+#define HOOK_INPUT_REEL_TANGENTIAL_DAMPING 0.996f
+#define HOOK_INPUT_REEL_GRAVITY_SCALE 0.65f
+#define HOOK_INPUT_REEL_MAX_PULL_SCALE 1.08f
 #define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.45f
-#define HOOK_INPUT_BACK_REEL_DECAY 1.25f
-#define HOOK_INPUT_BACK_EASE_TIME 0.60f
+#define HOOK_INPUT_HOLD_REEL_DECAY 1.25f
+#define HOOK_INPUT_HOLD_EASE_TIME 0.60f
 #define HOOK_INPUT_EASE_OUT_TIME 0.36f
-#define HOOK_INPUT_FORWARD_REEL_SCALE 1.25f
-#define HOOK_INPUT_BACK_GROUND_CHECK 56
-#define HOOK_INPUT_BACK_GROUND_MIN_REEL 0.22f
+#define HOOK_INPUT_REEL_SCALE 1.45f
+#define HOOK_INPUT_HOLD_GROUND_CHECK 56
+#define HOOK_INPUT_HOLD_GROUND_MIN_REEL 0.22f
 
 #define HOOK_MIN_PULL_SCALE 0.85f
 #define HOOK_MAX_PULL_SCALE 0.94f
@@ -285,25 +286,34 @@ static float PM_HookApproachBlend(float current, qbool active, float inTime, flo
 	return max(current - step, 0);
 }
 
-static void PM_HookUpdateInputBlends(qbool backHeld, qbool forwardHeld)
+static float PM_HookEaseBlend(float blend)
 {
-	pmove.hook_back_blend = PM_HookApproachBlend(pmove.hook_back_blend, backHeld,
-			HOOK_INPUT_BACK_EASE_TIME, HOOK_INPUT_EASE_OUT_TIME);
-	pmove.hook_forward_blend = PM_HookApproachBlend(pmove.hook_forward_blend, forwardHeld,
+	blend = bound(0, blend, 1);
+	return blend * blend * (3.0f - 2.0f * blend);
+}
+
+static void PM_HookUpdateInputBlends(qbool holdHeld, qbool reelHeld)
+{
+	pmove.hook_hold_blend = PM_HookApproachBlend(pmove.hook_hold_blend, holdHeld,
+			HOOK_INPUT_HOLD_EASE_TIME, HOOK_INPUT_EASE_OUT_TIME);
+	pmove.hook_reel_blend = PM_HookApproachBlend(pmove.hook_reel_blend, reelHeld,
 			HOOK_ACCEL_TIME, HOOK_INPUT_EASE_OUT_TIME);
 }
 
-static void PM_HookUpdatePullTime(float backBlend, float forwardBlend)
+static void PM_HookUpdatePullTime(float holdBlend, float reelBlend)
 {
 	float scale;
+	float holdEffect, reelEffect;
 
-	scale = HOOK_INPUT_NEUTRAL_REEL_SCALE + forwardBlend * (HOOK_INPUT_FORWARD_REEL_SCALE - HOOK_INPUT_NEUTRAL_REEL_SCALE);
-	pmove.hook_pull_time += pm_frametime * scale * (1.0f - backBlend);
-	pmove.hook_pull_time -= pm_frametime * HOOK_INPUT_BACK_REEL_DECAY * backBlend;
+	holdEffect = PM_HookEaseBlend(holdBlend);
+	reelEffect = PM_HookEaseBlend(reelBlend);
+	scale = HOOK_INPUT_NEUTRAL_REEL_SCALE + reelEffect * (HOOK_INPUT_REEL_SCALE - HOOK_INPUT_NEUTRAL_REEL_SCALE);
+	pmove.hook_pull_time += pm_frametime * scale * (1.0f - holdEffect);
+	pmove.hook_pull_time -= pm_frametime * HOOK_INPUT_HOLD_REEL_DECAY * holdEffect;
 	pmove.hook_pull_time = bound(0, pmove.hook_pull_time, HOOK_ACCEL_TIME);
 }
 
-static float PM_HookBackReelScale(qbool wasOnGround)
+static float PM_HookHoldReelScale(qbool wasOnGround)
 {
 	vec3_t end;
 	trace_t trace;
@@ -311,29 +321,41 @@ static float PM_HookBackReelScale(qbool wasOnGround)
 
 	reelScale = bound(0, pmove.hook_pull_time / HOOK_ACCEL_TIME, 1);
 	if (wasOnGround) {
-		return max(reelScale, HOOK_INPUT_BACK_GROUND_MIN_REEL);
+		return max(reelScale, HOOK_INPUT_HOLD_GROUND_MIN_REEL);
 	}
 
 	VectorCopy(pmove.origin, end);
-	end[2] -= HOOK_INPUT_BACK_GROUND_CHECK;
+	end[2] -= HOOK_INPUT_HOLD_GROUND_CHECK;
 	trace = PM_PlayerTrace(pmove.origin, end);
 	if (trace.fraction == 1 || trace.plane.normal[2] < MIN_STEP_NORMAL) {
 		return reelScale;
 	}
 
-	groundScale = (1.0f - trace.fraction) * HOOK_INPUT_BACK_GROUND_MIN_REEL;
+	groundScale = (1.0f - trace.fraction) * HOOK_INPUT_HOLD_GROUND_MIN_REEL;
 	return max(reelScale, groundScale);
 }
 
-static float PM_HookBackBrakeFactor(void)
+static float PM_HookHoldBrakeFactor(void)
 {
-	return bound(0, pmove.hook_time / HOOK_INPUT_BACK_EASE_TIME, 1);
+	return bound(0, pmove.hook_time / HOOK_INPUT_HOLD_EASE_TIME, 1);
+}
+
+static float PM_HookAdjustedWishAlign(float wishAlign, float reelBlend)
+{
+	float reelEffect;
+
+	if (wishAlign >= 0 || reelBlend <= 0) {
+		return wishAlign;
+	}
+
+	reelEffect = PM_HookEaseBlend(reelBlend);
+	return wishAlign * (1.0f - reelEffect);
 }
 
 static float PM_HookMovementInfluence(vec3_t uv_hook, vec3_t wishDir, vec3_t tangentDir)
 {
 	vec3_t controlDir;
-	float wishAlign, tangentLen, forwardMove;
+	float wishAlign, tangentLen;
 
 	VectorClear(wishDir);
 	VectorClear(tangentDir);
@@ -346,8 +368,6 @@ static float PM_HookMovementInfluence(vec3_t uv_hook, vec3_t wishDir, vec3_t tan
 		return 0;
 	}
 
-	forwardMove = max(pmove.cmd.forwardmove, 0);
-	VectorMA(controlDir, forwardMove, pm_forward, controlDir);
 	VectorMA(controlDir, pmove.cmd.sidemove, pm_right, controlDir);
 
 	wishAlign = bound(-1.0f, DotProduct(wishDir, uv_hook), 1.0f);
@@ -443,33 +463,33 @@ static float PM_HookPreservedRadialPullTarget(float radialSpeed, float targetSpe
 }
 
 static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull,
-		float wishAlign, float backBlend, float forwardBlend, qbool wasOnGround)
+		float wishAlign, float holdBlend, float reelBlend, qbool wasOnGround)
 {
 	vec3_t radialVel, tangentialVel;
-	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign, brakeFactor, backScale;
+	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign;
+	float holdEffect, reelEffect, brakeFactor, holdScale, normalTarget;
 
 	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
-	pullWishAlign = (wishAlign < -0.15f) ? wishAlign * HOOK_INPUT_BACK_RESIST_SCALE : wishAlign;
-	PM_HookUpdatePullTime(backBlend, forwardBlend);
+	pullWishAlign = PM_HookAdjustedWishAlign(wishAlign, reelBlend);
+	pullWishAlign = (pullWishAlign < -0.15f) ? pullWishAlign * HOOK_INPUT_BACK_RESIST_SCALE : pullWishAlign;
+	holdEffect = PM_HookEaseBlend(holdBlend);
+	reelEffect = PM_HookEaseBlend(reelBlend);
+	PM_HookUpdatePullTime(holdBlend, reelBlend);
 
 	targetSpeed = PM_HookTargetPullSpeed(minPull, maxPull);
-	if (backBlend > 0) {
-		brakeFactor = PM_HookBackBrakeFactor() * backBlend;
-		backScale = PM_HookBackReelScale(wasOnGround);
-		targetSpeed *= 1.0f - brakeFactor * (1.0f - backScale);
+	if (holdEffect > 0) {
+		brakeFactor = PM_HookHoldBrakeFactor() * holdEffect;
+		holdScale = PM_HookHoldReelScale(wasOnGround);
+		targetSpeed *= 1.0f - brakeFactor * (1.0f - holdScale);
 	}
-	else {
-		targetSpeed += bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
+	targetSpeed += (1.0f - holdEffect) * bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
+
+	if (reelEffect > 0) {
+		targetSpeed += reelEffect * HOOK_INPUT_REEL_RADIAL_BOOST * (maxPull - targetSpeed);
 	}
 
-	if (forwardBlend > 0) {
-		targetSpeed += forwardBlend * HOOK_INPUT_FORWARD_RADIAL_BOOST * (maxPull - targetSpeed);
-	}
-
-	if (backBlend <= 0) {
-		if (pullWishAlign < -0.15f) {
-			targetSpeed *= 1.0f + (pullWishAlign * HOOK_INPUT_BACK_PULL_SCALE);
-		}
+	if (pullWishAlign < -0.15f) {
+		targetSpeed *= 1.0f + ((1.0f - holdEffect) * pullWishAlign * HOOK_INPUT_BACK_PULL_SCALE);
 	}
 
 	PM_HookUpdateSlack(pullWishAlign, distanceToHook);
@@ -481,10 +501,11 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 	}
 
 	targetSpeed += tensionBoost;
-	if (backBlend <= 0) {
-		targetSpeed = PM_HookDownwardPullTarget(uv_hook, pmove.velocity, targetSpeed);
-		targetSpeed = bound(minPull * 0.25f, targetSpeed, maxPull * HOOK_RADIAL_SPEED_CAP);
-		targetSpeed = PM_HookPreservedRadialPullTarget(radialSpeed, targetSpeed, maxPull);
+	if (holdEffect < 1.0f) {
+		normalTarget = PM_HookDownwardPullTarget(uv_hook, pmove.velocity, targetSpeed);
+		normalTarget = bound(minPull * 0.25f, normalTarget, maxPull * HOOK_RADIAL_SPEED_CAP);
+		normalTarget = PM_HookPreservedRadialPullTarget(radialSpeed, normalTarget, maxPull);
+		targetSpeed = targetSpeed * holdEffect + normalTarget * (1.0f - holdEffect);
 	}
 	accel = ((radialSpeed < 0) && (targetSpeed > radialSpeed)) ? HOOK_PULL_RECOVER : HOOK_PULL_ACCEL;
 	radialSpeed = PM_HookApproach(radialSpeed, targetSpeed, accel * pm_frametime, HOOK_PULL_DECEL * pm_frametime);
@@ -494,9 +515,9 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 	pmove.hook_time = min(pmove.hook_time + pm_frametime, HOOK_ACCEL_TIME);
 }
 
-static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float forwardBlend)
+static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float reelBlend)
 {
-	float accel;
+	float accel, reelEffect;
 
 	if (VectorLength(tangentDir) < HOOK_EPSILON) {
 		return;
@@ -506,24 +527,26 @@ static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float f
 		return;
 	}
 
+	reelEffect = PM_HookEaseBlend(reelBlend);
 	accel = HOOK_INPUT_TANGENTIAL_ACCEL;
 	if (wishAlign < 0) {
 		accel *= 1.0f + fabs(wishAlign) * HOOK_INPUT_TANGENTIAL_BACK_BIAS;
 	}
-	if (forwardBlend > 0) {
-		accel *= 1.0f + forwardBlend * (HOOK_INPUT_FORWARD_TANGENTIAL_SCALE - 1.0f);
+	if (reelEffect > 0) {
+		accel *= 1.0f + reelEffect * (HOOK_INPUT_REEL_TANGENTIAL_SCALE - 1.0f);
 	}
 
 	VectorMA(pmove.velocity, accel * pm_frametime, tangentDir, pmove.velocity);
 }
 
-static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign, float forwardBlend)
+static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign, float reelBlend)
 {
 	vec3_t transVector, uv_gravity;
-	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent;
+	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent, reelEffect;
 
 	radialSpeed = DotProduct(pmove.velocity, uv_hook);
 	radialFactor = bound(0, radialSpeed / maxPull, 1);
+	wishAlign = PM_HookAdjustedWishAlign(wishAlign, reelBlend);
 	if (wishAlign < -0.15f) {
 		radialFactor = max(radialFactor, bound(0, fabs(wishAlign) * HOOK_INPUT_BACK_GRAVITY_FACTOR, 1));
 	}
@@ -533,8 +556,9 @@ static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wi
 	VectorMA(uv_gravity, -gravityInfluence, uv_hook, transVector);
 	gravityTangent = VectorNormalize(transVector);
 	gravityScale = HOOK_MIN_GRAVITY + radialFactor * (HOOK_MAX_GRAVITY - HOOK_MIN_GRAVITY);
-	if (forwardBlend > 0) {
-		gravityScale *= 1.0f + forwardBlend * (HOOK_INPUT_FORWARD_GRAVITY_SCALE - 1.0f);
+	reelEffect = PM_HookEaseBlend(reelBlend);
+	if (reelEffect > 0) {
+		gravityScale *= 1.0f + reelEffect * (HOOK_INPUT_REEL_GRAVITY_SCALE - 1.0f);
 	}
 
 	if (gravityTangent > HOOK_EPSILON && radialFactor > 0.02f) {
@@ -633,15 +657,15 @@ static qbool PM_HookMove(void)
 	float minPull;
 	float maxPull;
 	float wishAlign;
-	float damping;
+	float damping, reelEffect;
 	qbool useGroundBias;
 	qbool wasOnGround;
-	qbool backHeld;
-	qbool forwardHeld;
+	qbool holdHeld;
+	qbool reelHeld;
 
 	if (pmove.hook_state != mvd_hook_anchored) {
-		pmove.hook_back_blend = 0;
-		pmove.hook_forward_blend = 0;
+		pmove.hook_hold_blend = 0;
+		pmove.hook_reel_blend = 0;
 		return false;
 	}
 
@@ -660,23 +684,25 @@ static qbool PM_HookMove(void)
 	maxPull = (pmove.hook_max_pull > 0) ? pmove.hook_max_pull : HOOK_PULL_SPEED;
 	minPull *= HOOK_MIN_PULL_SCALE;
 	maxPull *= HOOK_MAX_PULL_SCALE;
+	holdHeld = pmove.cmd.forwardmove > 0;
+	reelHeld = pmove.cmd.forwardmove < 0;
+	PM_HookUpdateInputBlends(holdHeld, reelHeld);
+	reelEffect = PM_HookEaseBlend(pmove.hook_reel_blend);
+	maxPull *= 1.0f + reelEffect * (HOOK_INPUT_REEL_MAX_PULL_SCALE - 1.0f);
 	wishAlign = PM_HookMovementInfluence(uv_pull, wishDir, tangentDir);
-	backHeld = pmove.cmd.forwardmove < 0;
-	forwardHeld = pmove.cmd.forwardmove > 0;
-	PM_HookUpdateInputBlends(backHeld, forwardHeld);
 
-	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, pmove.hook_back_blend,
-			pmove.hook_forward_blend, wasOnGround);
-	PM_HookApplyInputControl(tangentDir, wishAlign, pmove.hook_forward_blend);
-	if (pmove.hook_forward_blend > 0) {
-		damping = 1.0f + pmove.hook_forward_blend * (HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING - 1.0f);
+	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, pmove.hook_hold_blend,
+			pmove.hook_reel_blend, wasOnGround);
+	PM_HookApplyInputControl(tangentDir, wishAlign, pmove.hook_reel_blend);
+	if (reelEffect > 0) {
+		damping = 1.0f + reelEffect * (HOOK_INPUT_REEL_TANGENTIAL_DAMPING - 1.0f);
 		PM_HookDampenTangentialVelocity(uv_pull, damping);
 	}
 	if (useGroundBias) {
 		PM_HookApplyGroundBias(uv_pull, maxPull);
 	}
 	else if (!wasOnGround) {
-		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, pmove.hook_forward_blend);
+		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, pmove.hook_reel_blend);
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
 	PM_HookCapVelocity(uv_pull, maxPull);
