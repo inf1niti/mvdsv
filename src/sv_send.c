@@ -939,6 +939,9 @@ static int SV_HookStateRecordType(client_t *client, int playernum)
 		if (client->hook_sent_state[playernum] != hook_client->hook_state) {
 			return mvd_hook_record_full;
 		}
+		if (client == hook_client && hook_client->hook_state == mvd_hook_anchored) {
+			return mvd_hook_record_full;
+		}
 		if (hook_client->hook_state == mvd_hook_anchored
 				&& ((client->netchan.outgoing_sequence + playernum) & 7) == 0) {
 			return mvd_hook_record_full;
