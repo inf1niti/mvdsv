@@ -63,7 +63,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_GROUND_FAST_TANGENTIAL_SCALE 0.95f
 
 #define HOOK_SLACK_DELAY     0.325f
-#define HOOK_SLACK_DURATION  1.105f
+#define HOOK_SLACK_DURATION  0.85f
 
 #define HOOK_PULL_ACCEL      4800
 #define HOOK_PULL_DECEL      2400
@@ -74,7 +74,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_MAX_GRAVITY     0.78f
 
 #define HOOK_MIN_INERTIA     0.078f
-#define HOOK_MAX_INERTIA     0.478f
+#define HOOK_MAX_INERTIA     0.38f
 
 #define HOOK_INPUT_TANGENTIAL_ACCEL 290
 #define HOOK_INPUT_TANGENTIAL_BACK_BIAS 0.25f
@@ -86,7 +86,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_REEL_TANGENTIAL_DAMPING 0.999f
 #define HOOK_INPUT_REEL_GRAVITY_SCALE 0.88f
 #define HOOK_INPUT_REEL_MAX_PULL_SCALE 1.14f
-#define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.45f
+#define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.55f
 #define HOOK_INPUT_HOLD_REEL_DECAY 1.25f
 #define HOOK_INPUT_HOLD_EASE_TIME 0.60f
 #define HOOK_INPUT_EASE_OUT_TIME 0.36f
@@ -101,8 +101,8 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_TENSION_INPUT_GAIN     320
 #define HOOK_TENSION_AWAY_GAIN      0.65f
 #define HOOK_TENSION_DECAY_RATE     180
-#define HOOK_TENSION_RELEASE_RATE   720
-#define HOOK_TENSION_MAX            0.38f
+#define HOOK_TENSION_RELEASE_RATE   840
+#define HOOK_TENSION_MAX            0.35f
 
 #define HOOK_RADIAL_SPEED_CAP       1.14f
 #define HOOK_RADIAL_AWAY_CAP        0.85f
@@ -433,6 +433,18 @@ static void PM_HookUpdateSlack(float wishAlign, float distanceToHook)
 	}
 }
 
+static float PM_HookSlackFactor(void)
+{
+	float slackFraction;
+
+	if (pmove.hook_awaytime <= HOOK_SLACK_DELAY) {
+		return 0;
+	}
+
+	slackFraction = bound(0, (pmove.hook_awaytime - HOOK_SLACK_DELAY) / HOOK_SLACK_DURATION, 1);
+	return slackFraction * slackFraction * (3.0f - 2.0f * slackFraction);
+}
+
 static float PM_HookUpdateTension(float wishAlign, float radialSpeed, float maxPull)
 {
 	float tensionCap, inputTension, velocityTension, tensionBoost;
@@ -532,8 +544,8 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 
 	PM_HookUpdateSlack(pullWishAlign, distanceToHook);
 	tensionBoost = PM_HookUpdateTension(pullWishAlign, radialSpeed, maxPull);
-	if (pmove.hook_awaytime > HOOK_SLACK_DELAY) {
-		slackFraction = bound(0, (pmove.hook_awaytime - HOOK_SLACK_DELAY) / HOOK_SLACK_DURATION, 1);
+	slackFraction = PM_HookSlackFactor();
+	if (slackFraction > 0) {
 		slackScale = HOOK_MIN_INERTIA + fabs(pullWishAlign) * (HOOK_MAX_INERTIA - HOOK_MIN_INERTIA);
 		targetSpeed *= 1.0f - (slackFraction * slackScale);
 	}
@@ -686,20 +698,28 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 	}
 }
 
-static void PM_HookPreserveReelSpeed(float minSpeed, float reelEffect)
+static void PM_HookPreserveReelSpeed(float minSpeed, float reelEffect, float entryRadialSpeed,
+		float entryTangentialSpeed, float maxPull)
 {
-	float totalSpeed;
+	float totalSpeed, preserveSpeed, awayFactor;
 
 	if (reelEffect <= 0 || minSpeed <= HOOK_EPSILON) {
 		return;
 	}
 
+	preserveSpeed = minSpeed;
+	if (entryRadialSpeed < 0) {
+		awayFactor = bound(0, -entryRadialSpeed / max(maxPull, HOOK_EPSILON), 1);
+		preserveSpeed = max(entryTangentialSpeed, minSpeed * (1.0f - awayFactor));
+	}
+
 	totalSpeed = VectorLength(pmove.velocity);
-	if (totalSpeed < HOOK_EPSILON || totalSpeed >= minSpeed) {
+	preserveSpeed = totalSpeed + (preserveSpeed - totalSpeed) * reelEffect;
+	if (totalSpeed < HOOK_EPSILON || totalSpeed >= preserveSpeed) {
 		return;
 	}
 
-	VectorScale(pmove.velocity, minSpeed / totalSpeed, pmove.velocity);
+	VectorScale(pmove.velocity, preserveSpeed / totalSpeed, pmove.velocity);
 }
 
 static qbool PM_HookMove(void)
@@ -709,11 +729,13 @@ static qbool PM_HookMove(void)
 	vec3_t uv_pull;
 	vec3_t wishDir;
 	vec3_t tangentDir;
+	vec3_t entryRadialVel;
+	vec3_t entryTangentialVel;
 	float distanceToHook;
 	float minPull;
 	float maxPull;
 	float wishAlign;
-	float damping, reelEffect, reelPullEffect, suppressEffect, entrySpeed;
+	float damping, reelEffect, reelPullEffect, suppressEffect, entrySpeed, entryRadialSpeed, entryTangentialSpeed;
 	qbool useGroundBias;
 	qbool wasOnGround;
 	qbool holdHeld;
@@ -741,6 +763,8 @@ static qbool PM_HookMove(void)
 	PM_HookGetPullVector(uv_hook, wasOnGround, uv_pull);
 	pmove.onground = false;
 	entrySpeed = VectorLength(pmove.velocity);
+	PM_HookDecomposeVelocity(pmove.velocity, uv_pull, entryRadialVel, entryTangentialVel, &entryRadialSpeed);
+	entryTangentialSpeed = VectorLength(entryTangentialVel);
 	minPull = (pmove.hook_min_pull > 0) ? pmove.hook_min_pull : HOOK_INIT_PULL_SPEED;
 	maxPull = (pmove.hook_max_pull > 0) ? pmove.hook_max_pull : HOOK_PULL_SPEED;
 	minPull *= HOOK_MIN_PULL_SCALE;
@@ -769,7 +793,7 @@ static qbool PM_HookMove(void)
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
 	PM_HookCapVelocity(uv_pull, maxPull);
-	PM_HookPreserveReelSpeed(entrySpeed, reelPullEffect);
+	PM_HookPreserveReelSpeed(entrySpeed, reelPullEffect, entryRadialSpeed, entryTangentialSpeed, maxPull);
 	return true;
 }
 
