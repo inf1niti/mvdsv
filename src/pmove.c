@@ -81,14 +81,15 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_BACK_PULL_SCALE 0.55f
 #define HOOK_INPUT_BACK_RESIST_SCALE 0.85f
 #define HOOK_INPUT_BACK_GRAVITY_FACTOR 0.65f
-#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.45f
-#define HOOK_INPUT_FORWARD_TANGENTIAL_SCALE 0.35f
-#define HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING 0.985f
-#define HOOK_INPUT_FORWARD_GRAVITY_SCALE 0.35f
+#define HOOK_INPUT_FORWARD_RADIAL_BOOST 0.32f
+#define HOOK_INPUT_FORWARD_TANGENTIAL_SCALE 0.55f
+#define HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING 0.993f
+#define HOOK_INPUT_FORWARD_GRAVITY_SCALE 0.55f
 #define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.45f
 #define HOOK_INPUT_BACK_REEL_DECAY 1.25f
-#define HOOK_INPUT_BACK_EASE_TIME 0.38f
-#define HOOK_INPUT_FORWARD_REEL_SCALE 6.0f
+#define HOOK_INPUT_BACK_EASE_TIME 0.60f
+#define HOOK_INPUT_EASE_OUT_TIME 0.36f
+#define HOOK_INPUT_FORWARD_REEL_SCALE 1.25f
 #define HOOK_INPUT_BACK_GROUND_CHECK 56
 #define HOOK_INPUT_BACK_GROUND_MIN_REEL 0.22f
 
@@ -99,7 +100,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_TENSION_AWAY_GAIN      0.65f
 #define HOOK_TENSION_DECAY_RATE     180
 #define HOOK_TENSION_RELEASE_RATE   720
-#define HOOK_TENSION_MAX            0.42f
+#define HOOK_TENSION_MAX            0.38f
 
 #define HOOK_RADIAL_SPEED_CAP       1.14f
 #define HOOK_RADIAL_AWAY_CAP        0.85f
@@ -272,17 +273,34 @@ static float PM_HookTargetPullSpeed(float minPull, float maxPull)
 	return minPull + lerpFactor * (maxPull - minPull);
 }
 
-static void PM_HookUpdatePullTime(qbool backHeld, qbool forwardHeld)
+static float PM_HookApproachBlend(float current, qbool active, float inTime, float outTime)
+{
+	float step;
+
+	step = pm_frametime / (active ? inTime : outTime);
+	if (active) {
+		return min(current + step, 1.0f);
+	}
+
+	return max(current - step, 0);
+}
+
+static void PM_HookUpdateInputBlends(qbool backHeld, qbool forwardHeld)
+{
+	pmove.hook_back_blend = PM_HookApproachBlend(pmove.hook_back_blend, backHeld,
+			HOOK_INPUT_BACK_EASE_TIME, HOOK_INPUT_EASE_OUT_TIME);
+	pmove.hook_forward_blend = PM_HookApproachBlend(pmove.hook_forward_blend, forwardHeld,
+			HOOK_ACCEL_TIME, HOOK_INPUT_EASE_OUT_TIME);
+}
+
+static void PM_HookUpdatePullTime(float backBlend, float forwardBlend)
 {
 	float scale;
 
-	if (backHeld) {
-		pmove.hook_pull_time = max(0, pmove.hook_pull_time - pm_frametime * HOOK_INPUT_BACK_REEL_DECAY);
-		return;
-	}
-
-	scale = forwardHeld ? HOOK_INPUT_FORWARD_REEL_SCALE : HOOK_INPUT_NEUTRAL_REEL_SCALE;
-	pmove.hook_pull_time = min(pmove.hook_pull_time + pm_frametime * scale, HOOK_ACCEL_TIME);
+	scale = HOOK_INPUT_NEUTRAL_REEL_SCALE + forwardBlend * (HOOK_INPUT_FORWARD_REEL_SCALE - HOOK_INPUT_NEUTRAL_REEL_SCALE);
+	pmove.hook_pull_time += pm_frametime * scale * (1.0f - backBlend);
+	pmove.hook_pull_time -= pm_frametime * HOOK_INPUT_BACK_REEL_DECAY * backBlend;
+	pmove.hook_pull_time = bound(0, pmove.hook_pull_time, HOOK_ACCEL_TIME);
 }
 
 static float PM_HookBackReelScale(qbool wasOnGround)
@@ -425,27 +443,30 @@ static float PM_HookPreservedRadialPullTarget(float radialSpeed, float targetSpe
 }
 
 static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull,
-		float wishAlign, qbool backHeld, qbool forwardHeld, qbool wasOnGround)
+		float wishAlign, float backBlend, float forwardBlend, qbool wasOnGround)
 {
 	vec3_t radialVel, tangentialVel;
 	float targetSpeed, radialSpeed, accel, slackFraction, slackScale, tensionBoost, pullWishAlign, brakeFactor, backScale;
 
 	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
 	pullWishAlign = (wishAlign < -0.15f) ? wishAlign * HOOK_INPUT_BACK_RESIST_SCALE : wishAlign;
-	PM_HookUpdatePullTime(backHeld, forwardHeld);
+	PM_HookUpdatePullTime(backBlend, forwardBlend);
 
 	targetSpeed = PM_HookTargetPullSpeed(minPull, maxPull);
-	if (backHeld) {
-		brakeFactor = PM_HookBackBrakeFactor();
+	if (backBlend > 0) {
+		brakeFactor = PM_HookBackBrakeFactor() * backBlend;
 		backScale = PM_HookBackReelScale(wasOnGround);
 		targetSpeed *= 1.0f - brakeFactor * (1.0f - backScale);
 	}
 	else {
 		targetSpeed += bound(0, uv_hook[2], 1) * HOOK_VERTICAL_PULL_BOOST * (maxPull - targetSpeed);
-		if (forwardHeld) {
-			targetSpeed += HOOK_INPUT_FORWARD_RADIAL_BOOST * (maxPull - targetSpeed);
-		}
+	}
 
+	if (forwardBlend > 0) {
+		targetSpeed += forwardBlend * HOOK_INPUT_FORWARD_RADIAL_BOOST * (maxPull - targetSpeed);
+	}
+
+	if (backBlend <= 0) {
 		if (pullWishAlign < -0.15f) {
 			targetSpeed *= 1.0f + (pullWishAlign * HOOK_INPUT_BACK_PULL_SCALE);
 		}
@@ -460,7 +481,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 	}
 
 	targetSpeed += tensionBoost;
-	if (!backHeld) {
+	if (backBlend <= 0) {
 		targetSpeed = PM_HookDownwardPullTarget(uv_hook, pmove.velocity, targetSpeed);
 		targetSpeed = bound(minPull * 0.25f, targetSpeed, maxPull * HOOK_RADIAL_SPEED_CAP);
 		targetSpeed = PM_HookPreservedRadialPullTarget(radialSpeed, targetSpeed, maxPull);
@@ -473,7 +494,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 	pmove.hook_time = min(pmove.hook_time + pm_frametime, HOOK_ACCEL_TIME);
 }
 
-static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, qbool forwardHeld)
+static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float forwardBlend)
 {
 	float accel;
 
@@ -489,14 +510,14 @@ static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, qbool f
 	if (wishAlign < 0) {
 		accel *= 1.0f + fabs(wishAlign) * HOOK_INPUT_TANGENTIAL_BACK_BIAS;
 	}
-	if (forwardHeld) {
-		accel *= HOOK_INPUT_FORWARD_TANGENTIAL_SCALE;
+	if (forwardBlend > 0) {
+		accel *= 1.0f + forwardBlend * (HOOK_INPUT_FORWARD_TANGENTIAL_SCALE - 1.0f);
 	}
 
 	VectorMA(pmove.velocity, accel * pm_frametime, tangentDir, pmove.velocity);
 }
 
-static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign, qbool forwardHeld)
+static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign, float forwardBlend)
 {
 	vec3_t transVector, uv_gravity;
 	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent;
@@ -512,8 +533,8 @@ static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wi
 	VectorMA(uv_gravity, -gravityInfluence, uv_hook, transVector);
 	gravityTangent = VectorNormalize(transVector);
 	gravityScale = HOOK_MIN_GRAVITY + radialFactor * (HOOK_MAX_GRAVITY - HOOK_MIN_GRAVITY);
-	if (forwardHeld) {
-		gravityScale *= HOOK_INPUT_FORWARD_GRAVITY_SCALE;
+	if (forwardBlend > 0) {
+		gravityScale *= 1.0f + forwardBlend * (HOOK_INPUT_FORWARD_GRAVITY_SCALE - 1.0f);
 	}
 
 	if (gravityTangent > HOOK_EPSILON && radialFactor > 0.02f) {
@@ -612,12 +633,15 @@ static qbool PM_HookMove(void)
 	float minPull;
 	float maxPull;
 	float wishAlign;
+	float damping;
 	qbool useGroundBias;
 	qbool wasOnGround;
 	qbool backHeld;
 	qbool forwardHeld;
 
 	if (pmove.hook_state != mvd_hook_anchored) {
+		pmove.hook_back_blend = 0;
+		pmove.hook_forward_blend = 0;
 		return false;
 	}
 
@@ -639,17 +663,20 @@ static qbool PM_HookMove(void)
 	wishAlign = PM_HookMovementInfluence(uv_pull, wishDir, tangentDir);
 	backHeld = pmove.cmd.forwardmove < 0;
 	forwardHeld = pmove.cmd.forwardmove > 0;
+	PM_HookUpdateInputBlends(backHeld, forwardHeld);
 
-	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, backHeld, forwardHeld, wasOnGround);
-	PM_HookApplyInputControl(tangentDir, wishAlign, forwardHeld);
-	if (forwardHeld) {
-		PM_HookDampenTangentialVelocity(uv_pull, HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING);
+	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, pmove.hook_back_blend,
+			pmove.hook_forward_blend, wasOnGround);
+	PM_HookApplyInputControl(tangentDir, wishAlign, pmove.hook_forward_blend);
+	if (pmove.hook_forward_blend > 0) {
+		damping = 1.0f + pmove.hook_forward_blend * (HOOK_INPUT_FORWARD_TANGENTIAL_DAMPING - 1.0f);
+		PM_HookDampenTangentialVelocity(uv_pull, damping);
 	}
 	if (useGroundBias) {
 		PM_HookApplyGroundBias(uv_pull, maxPull);
 	}
 	else if (!wasOnGround) {
-		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, forwardHeld);
+		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, pmove.hook_forward_blend);
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
 	PM_HookCapVelocity(uv_pull, maxPull);
