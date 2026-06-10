@@ -86,7 +86,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_REEL_TANGENTIAL_DAMPING 0.999f
 #define HOOK_INPUT_REEL_GRAVITY_SCALE 0.88f
 #define HOOK_INPUT_REEL_MAX_PULL_SCALE 1.14f
-#define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.55f
+#define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.48f
 #define HOOK_INPUT_HOLD_REEL_DECAY 1.25f
 #define HOOK_INPUT_HOLD_EASE_TIME 0.60f
 #define HOOK_INPUT_EASE_OUT_TIME 0.36f
@@ -770,7 +770,7 @@ static qbool PM_HookMove(void)
 	minPull *= HOOK_MIN_PULL_SCALE;
 	maxPull *= HOOK_MAX_PULL_SCALE;
 	holdHeld = pmove.cmd.forwardmove < 0;
-	reelHeld = (pmove.cmd.buttons & BUTTON_JUMP) != 0;
+	reelHeld = pmove.cmd.forwardmove > 0;
 	PM_HookUpdateInputBlends(holdHeld, reelHeld);
 	reelEffect = PM_HookEaseBlend(pmove.hook_reel_blend);
 	reelPullEffect = PM_HookEaseBlend(pmove.hook_reel_pull_blend);
