@@ -73,6 +73,9 @@ typedef struct {
 	float		hook_pull_time;
 	float		hook_hold_blend;
 	float		hook_reel_blend;
+	int			hook_input_mode;
+	qbool		hook_hold_washeld;
+	qbool		hook_reel_washeld;
 
 	// results
 	int			numtouch;

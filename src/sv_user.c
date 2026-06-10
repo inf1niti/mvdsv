@@ -3791,6 +3791,9 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 	pmove.hook_pull_time = sv_client->hook_pull_time;
 	pmove.hook_hold_blend = sv_client->hook_hold_blend;
 	pmove.hook_reel_blend = sv_client->hook_reel_blend;
+	pmove.hook_input_mode = sv_client->hook_input_mode;
+	pmove.hook_hold_washeld = sv_client->hook_hold_washeld;
+	pmove.hook_reel_washeld = sv_client->hook_reel_washeld;
 #endif
 	
 	// let KTeams "broken ankle" code work
@@ -3857,6 +3860,9 @@ FIXME
 	sv_client->hook_pull_time = pmove.hook_pull_time;
 	sv_client->hook_hold_blend = pmove.hook_hold_blend;
 	sv_client->hook_reel_blend = pmove.hook_reel_blend;
+	sv_client->hook_input_mode = pmove.hook_input_mode;
+	sv_client->hook_hold_washeld = pmove.hook_hold_washeld;
+	sv_client->hook_reel_washeld = pmove.hook_reel_washeld;
 #endif
 	sv_player->v->teleport_time = pmove.waterjumptime;
 	if (pr_nqprogs)

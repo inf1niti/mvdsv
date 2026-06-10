@@ -114,6 +114,10 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_OSCILLATION_THRESHOLD_SCALE     0.33f
 #define HOOK_OSCILLATION_DAMPING_DELAY       0.18f
 
+#define HOOK_INPUT_NONE 0
+#define HOOK_INPUT_HOLD 1
+#define HOOK_INPUT_REEL 2
+
 // Add an entity to touch list, discarding duplicates
 static void PM_AddTouchedEnt (int num)
 {
@@ -292,8 +296,40 @@ static float PM_HookEaseBlend(float blend)
 	return blend * blend * (3.0f - 2.0f * blend);
 }
 
+static void PM_HookUpdateInputMode(qbool holdHeld, qbool reelHeld)
+{
+	if (holdHeld && !pmove.hook_hold_washeld) {
+		pmove.hook_input_mode = HOOK_INPUT_HOLD;
+	}
+	if (reelHeld && !pmove.hook_reel_washeld) {
+		pmove.hook_input_mode = HOOK_INPUT_REEL;
+	}
+
+	if (pmove.hook_input_mode == HOOK_INPUT_HOLD && !holdHeld) {
+		pmove.hook_input_mode = reelHeld ? HOOK_INPUT_REEL : HOOK_INPUT_NONE;
+	}
+	else if (pmove.hook_input_mode == HOOK_INPUT_REEL && !reelHeld) {
+		pmove.hook_input_mode = holdHeld ? HOOK_INPUT_HOLD : HOOK_INPUT_NONE;
+	}
+	else if (pmove.hook_input_mode == HOOK_INPUT_NONE) {
+		if (reelHeld) {
+			pmove.hook_input_mode = HOOK_INPUT_REEL;
+		}
+		else if (holdHeld) {
+			pmove.hook_input_mode = HOOK_INPUT_HOLD;
+		}
+	}
+
+	pmove.hook_hold_washeld = holdHeld;
+	pmove.hook_reel_washeld = reelHeld;
+}
+
 static void PM_HookUpdateInputBlends(qbool holdHeld, qbool reelHeld)
 {
+	PM_HookUpdateInputMode(holdHeld, reelHeld);
+	holdHeld = pmove.hook_input_mode == HOOK_INPUT_HOLD;
+	reelHeld = pmove.hook_input_mode == HOOK_INPUT_REEL;
+
 	pmove.hook_hold_blend = PM_HookApproachBlend(pmove.hook_hold_blend, holdHeld,
 			HOOK_INPUT_HOLD_EASE_TIME, HOOK_INPUT_EASE_OUT_TIME);
 	pmove.hook_reel_blend = PM_HookApproachBlend(pmove.hook_reel_blend, reelHeld,
@@ -516,7 +552,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 
 static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float reelBlend)
 {
-	float accel, reelEffect;
+	float accel, reelEffect, suppressEffect;
 
 	if (VectorLength(tangentDir) < HOOK_EPSILON) {
 		return;
@@ -527,12 +563,13 @@ static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float r
 	}
 
 	reelEffect = PM_HookEaseBlend(reelBlend);
+	suppressEffect = reelEffect * reelEffect;
 	accel = HOOK_INPUT_TANGENTIAL_ACCEL;
 	if (wishAlign < 0) {
 		accel *= 1.0f + fabs(wishAlign) * HOOK_INPUT_TANGENTIAL_BACK_BIAS;
 	}
-	if (reelEffect > 0) {
-		accel *= 1.0f + reelEffect * (HOOK_INPUT_REEL_TANGENTIAL_SCALE - 1.0f);
+	if (suppressEffect > 0) {
+		accel *= 1.0f + suppressEffect * (HOOK_INPUT_REEL_TANGENTIAL_SCALE - 1.0f);
 	}
 
 	VectorMA(pmove.velocity, accel * pm_frametime, tangentDir, pmove.velocity);
@@ -541,7 +578,7 @@ static void PM_HookApplyInputControl(vec3_t tangentDir, float wishAlign, float r
 static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wishAlign, float reelBlend)
 {
 	vec3_t transVector, uv_gravity;
-	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent, reelEffect;
+	float radialSpeed, radialFactor, gravityInfluence, gravityScale, gravityTangent, reelEffect, suppressEffect;
 
 	radialSpeed = DotProduct(pmove.velocity, uv_hook);
 	radialFactor = bound(0, radialSpeed / maxPull, 1);
@@ -556,8 +593,9 @@ static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wi
 	gravityTangent = VectorNormalize(transVector);
 	gravityScale = HOOK_MIN_GRAVITY + radialFactor * (HOOK_MAX_GRAVITY - HOOK_MIN_GRAVITY);
 	reelEffect = PM_HookEaseBlend(reelBlend);
-	if (reelEffect > 0) {
-		gravityScale *= 1.0f + reelEffect * (HOOK_INPUT_REEL_GRAVITY_SCALE - 1.0f);
+	suppressEffect = reelEffect * reelEffect;
+	if (suppressEffect > 0) {
+		gravityScale *= 1.0f + suppressEffect * (HOOK_INPUT_REEL_GRAVITY_SCALE - 1.0f);
 	}
 
 	if (gravityTangent > HOOK_EPSILON && radialFactor > 0.02f) {
@@ -656,7 +694,7 @@ static qbool PM_HookMove(void)
 	float minPull;
 	float maxPull;
 	float wishAlign;
-	float damping, reelEffect;
+	float damping, reelEffect, suppressEffect;
 	qbool useGroundBias;
 	qbool wasOnGround;
 	qbool holdHeld;
@@ -665,6 +703,9 @@ static qbool PM_HookMove(void)
 	if (pmove.hook_state != mvd_hook_anchored) {
 		pmove.hook_hold_blend = 0;
 		pmove.hook_reel_blend = 0;
+		pmove.hook_input_mode = HOOK_INPUT_NONE;
+		pmove.hook_hold_washeld = false;
+		pmove.hook_reel_washeld = false;
 		return false;
 	}
 
@@ -693,8 +734,9 @@ static qbool PM_HookMove(void)
 	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, pmove.hook_hold_blend,
 			pmove.hook_reel_blend, wasOnGround);
 	PM_HookApplyInputControl(tangentDir, wishAlign, pmove.hook_reel_blend);
-	if (reelEffect > 0) {
-		damping = 1.0f + reelEffect * (HOOK_INPUT_REEL_TANGENTIAL_DAMPING - 1.0f);
+	suppressEffect = reelEffect * reelEffect;
+	if (suppressEffect > 0) {
+		damping = 1.0f + suppressEffect * (HOOK_INPUT_REEL_TANGENTIAL_DAMPING - 1.0f);
 		PM_HookDampenTangentialVelocity(uv_pull, damping);
 	}
 	if (useGroundBias) {

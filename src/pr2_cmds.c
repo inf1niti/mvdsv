@@ -2158,6 +2158,9 @@ static void EXT_ClearRCTFHookState(client_t *cl)
 	cl->hook_pull_time = 0;
 	cl->hook_hold_blend = 0;
 	cl->hook_reel_blend = 0;
+	cl->hook_input_mode = 0;
+	cl->hook_hold_washeld = false;
+	cl->hook_reel_washeld = false;
 	cl->hook_update_sequence = 0;
 	cl->hook_cooldown_end_time = 0;
 	cl->hook_retract_end_time = 0;
@@ -2228,6 +2231,9 @@ static intptr_t EXT_RCTFHookState(intptr_t *args)
 	cl->hook_pull_time = state->pull_time;
 	cl->hook_hold_blend = 0;
 	cl->hook_reel_blend = 0;
+	cl->hook_input_mode = 0;
+	cl->hook_hold_washeld = false;
+	cl->hook_reel_washeld = false;
 
 	return 1;
 }
