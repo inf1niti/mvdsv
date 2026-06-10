@@ -491,6 +491,9 @@ static void PM_HookUpdateRopeLength(qbool holdActive, float distanceToHook)
 		if (pmove.hook_rope_length <= HOOK_EPSILON) {
 			pmove.hook_rope_length = distanceToHook;
 		}
+		else if (pmove.hook_hold_blend < 1.0f && distanceToHook < pmove.hook_rope_length) {
+			pmove.hook_rope_length = distanceToHook;
+		}
 		return;
 	}
 
