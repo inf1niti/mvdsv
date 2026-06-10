@@ -683,6 +683,22 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 	}
 }
 
+static void PM_HookPreserveReelSpeed(float minSpeed, float reelEffect)
+{
+	float totalSpeed;
+
+	if (reelEffect <= 0 || minSpeed <= HOOK_EPSILON) {
+		return;
+	}
+
+	totalSpeed = VectorLength(pmove.velocity);
+	if (totalSpeed < HOOK_EPSILON || totalSpeed >= minSpeed) {
+		return;
+	}
+
+	VectorScale(pmove.velocity, minSpeed / totalSpeed, pmove.velocity);
+}
+
 static qbool PM_HookMove(void)
 {
 	vec3_t hookVector;
@@ -694,7 +710,7 @@ static qbool PM_HookMove(void)
 	float minPull;
 	float maxPull;
 	float wishAlign;
-	float damping, reelEffect, suppressEffect;
+	float damping, reelEffect, suppressEffect, entrySpeed;
 	qbool useGroundBias;
 	qbool wasOnGround;
 	qbool holdHeld;
@@ -720,6 +736,7 @@ static qbool PM_HookMove(void)
 	useGroundBias = wasOnGround && (uv_hook[2] > HOOK_GROUND_DETACH_MIN_UP);
 	PM_HookGetPullVector(uv_hook, wasOnGround, uv_pull);
 	pmove.onground = false;
+	entrySpeed = VectorLength(pmove.velocity);
 	minPull = (pmove.hook_min_pull > 0) ? pmove.hook_min_pull : HOOK_INIT_PULL_SPEED;
 	maxPull = (pmove.hook_max_pull > 0) ? pmove.hook_max_pull : HOOK_PULL_SPEED;
 	minPull *= HOOK_MIN_PULL_SCALE;
@@ -747,6 +764,7 @@ static qbool PM_HookMove(void)
 	}
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
 	PM_HookCapVelocity(uv_pull, maxPull);
+	PM_HookPreserveReelSpeed(entrySpeed, reelEffect);
 	return true;
 }
 
