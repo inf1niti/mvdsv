@@ -361,7 +361,6 @@ static float PM_HookMovementInfluence(vec3_t uv_hook, vec3_t wishDir, vec3_t tan
 	VectorClear(tangentDir);
 	VectorClear(controlDir);
 
-	VectorMA(wishDir, pmove.cmd.forwardmove, pm_forward, wishDir);
 	VectorMA(wishDir, pmove.cmd.sidemove, pm_right, wishDir);
 
 	if (VectorNormalize(wishDir) < HOOK_EPSILON) {
@@ -684,8 +683,8 @@ static qbool PM_HookMove(void)
 	maxPull = (pmove.hook_max_pull > 0) ? pmove.hook_max_pull : HOOK_PULL_SPEED;
 	minPull *= HOOK_MIN_PULL_SCALE;
 	maxPull *= HOOK_MAX_PULL_SCALE;
-	holdHeld = pmove.cmd.forwardmove > 0;
-	reelHeld = pmove.cmd.forwardmove < 0;
+	holdHeld = pmove.cmd.forwardmove < 0;
+	reelHeld = (pmove.cmd.buttons & BUTTON_JUMP) != 0;
 	PM_HookUpdateInputBlends(holdHeld, reelHeld);
 	reelEffect = PM_HookEaseBlend(pmove.hook_reel_blend);
 	maxPull *= 1.0f + reelEffect * (HOOK_INPUT_REEL_MAX_PULL_SCALE - 1.0f);
