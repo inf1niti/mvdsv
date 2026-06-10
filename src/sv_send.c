@@ -982,6 +982,7 @@ static void SV_WriteHookOwnerState(sizebuf_t *msg, client_t *hook_client)
 	MSG_WriteShort(msg, SV_HookStateShort(hook_client->hook_max_pull));
 	MSG_WriteShort(msg, SV_HookStateMillis(hook_client->hook_pull_time));
 	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_hold_blend));
+	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_hold_length_blend));
 	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_reel_blend));
 	MSG_WriteShort(msg, SV_HookStateScaled(hook_client->hook_reel_pull_blend));
 	MSG_WriteByte(msg, hook_client->hook_input_mode);

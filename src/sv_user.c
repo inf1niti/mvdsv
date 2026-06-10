@@ -3791,6 +3791,7 @@ void SV_RunCmd (usercmd_t *ucmd, qbool inside, qbool second_attempt) //bliP: 24/
 	pmove.hook_max_pull = sv_client->hook_max_pull;
 	pmove.hook_pull_time = sv_client->hook_pull_time;
 	pmove.hook_hold_blend = sv_client->hook_hold_blend;
+	pmove.hook_hold_length_blend = sv_client->hook_hold_length_blend;
 	pmove.hook_reel_blend = sv_client->hook_reel_blend;
 	pmove.hook_reel_pull_blend = sv_client->hook_reel_pull_blend;
 	pmove.hook_input_mode = sv_client->hook_input_mode;
@@ -3862,6 +3863,7 @@ FIXME
 	sv_client->hook_rope_length = pmove.hook_rope_length;
 	sv_client->hook_pull_time = pmove.hook_pull_time;
 	sv_client->hook_hold_blend = pmove.hook_hold_blend;
+	sv_client->hook_hold_length_blend = pmove.hook_hold_length_blend;
 	sv_client->hook_reel_blend = pmove.hook_reel_blend;
 	sv_client->hook_reel_pull_blend = pmove.hook_reel_pull_blend;
 	sv_client->hook_input_mode = pmove.hook_input_mode;

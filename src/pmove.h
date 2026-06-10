@@ -73,6 +73,7 @@ typedef struct {
 	float		hook_max_pull;
 	float		hook_pull_time;
 	float		hook_hold_blend;
+	float		hook_hold_length_blend;
 	float		hook_reel_blend;
 	float		hook_reel_pull_blend;
 	int			hook_input_mode;
