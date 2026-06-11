@@ -56,6 +56,7 @@ vec3_t	player_maxs = {16, 16, 32};
 
 #define HOOK_GROUND_DETACH_SPEED          360
 #define HOOK_GROUND_DETACH_MIN_UP         0.02f
+#define HOOK_GROUND_LIFT_MIN_UP           0.08f
 #define HOOK_GROUND_MIN_LIFT_SPEED        120
 #define HOOK_GROUND_MAX_LIFT_SPEED        260
 #define HOOK_GROUND_FULL_LIFT_UP          0.25f
@@ -252,11 +253,12 @@ static void PM_HookSetMinimumGroundLift(vec3_t uv_hook)
 {
 	float liftSpeed;
 
-	if (uv_hook[2] <= HOOK_GROUND_DETACH_MIN_UP) {
+	if (uv_hook[2] <= HOOK_GROUND_LIFT_MIN_UP) {
 		return;
 	}
 
-	liftSpeed = HOOK_GROUND_MAX_LIFT_SPEED * bound(0, uv_hook[2] / HOOK_GROUND_FULL_LIFT_UP, 1);
+	liftSpeed = HOOK_GROUND_MAX_LIFT_SPEED
+			* bound(0, (uv_hook[2] - HOOK_GROUND_LIFT_MIN_UP) / (HOOK_GROUND_FULL_LIFT_UP - HOOK_GROUND_LIFT_MIN_UP), 1);
 	liftSpeed = max(HOOK_GROUND_MIN_LIFT_SPEED, liftSpeed);
 
 	if (pmove.velocity[2] < liftSpeed) {
@@ -558,7 +560,7 @@ static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float m
 
 	PM_HookUpdateSlack(pullWishAlign, distanceToHook);
 	tensionBoost = PM_HookUpdateTension(pullWishAlign, radialSpeed, maxPull);
-	slackFraction = PM_HookSlackFactor();
+	slackFraction = PM_HookSlackFactor() * (1.0f - holdEffect);
 	if (slackFraction > 0) {
 		slackScale = HOOK_MIN_INERTIA + fabs(pullWishAlign) * (HOOK_MAX_INERTIA - HOOK_MIN_INERTIA);
 		targetSpeed *= 1.0f - (slackFraction * slackScale);
@@ -637,18 +639,22 @@ static void PM_HookApplyGravityInfluence(vec3_t uv_hook, float maxPull, float wi
 	}
 }
 
-static void PM_HookApplyGroundBias(vec3_t uv_hook, float maxPull)
+static void PM_HookApplyGroundBias(vec3_t uv_hook, float maxPull, float holdBlend)
 {
-	float preserveFactor, scale;
+	float holdEffect, preserveFactor, scale;
 
-	PM_HookSetMinimumRadialSpeed(uv_hook, HOOK_GROUND_DETACH_SPEED);
-	PM_HookSetMinimumGroundLift(uv_hook);
+	holdEffect = PM_HookEaseBlend(holdBlend);
+	if (holdEffect <= 0) {
+		PM_HookSetMinimumRadialSpeed(uv_hook, HOOK_GROUND_DETACH_SPEED);
+		PM_HookSetMinimumGroundLift(uv_hook);
+	}
 
 	scale = HOOK_GROUND_TANGENTIAL_SCALE;
 	preserveFactor = PM_HookPreserveFactor();
 	if ((preserveFactor > 0) && (pmove.hook_initial_speed > maxPull)) {
 		scale += (HOOK_GROUND_FAST_TANGENTIAL_SCALE - HOOK_GROUND_TANGENTIAL_SCALE) * preserveFactor;
 	}
+	scale += (1.0f - scale) * holdEffect;
 
 	PM_HookDampenTangentialVelocity(uv_hook, scale);
 }
@@ -841,7 +847,7 @@ static qbool PM_HookMove(void)
 		PM_HookDampenTangentialVelocity(uv_pull, damping);
 	}
 	if (useGroundBias) {
-		PM_HookApplyGroundBias(uv_pull, maxPull);
+		PM_HookApplyGroundBias(uv_pull, maxPull, pmove.hook_hold_blend);
 	}
 	else if (!wasOnGround) {
 		PM_HookApplyGravityInfluence(uv_pull, maxPull, wishAlign, pmove.hook_reel_blend);
