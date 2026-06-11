@@ -100,6 +100,10 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_HOLD_SWING_TARGET_SCALE 0.66f
 #define HOOK_HOLD_SWING_CAP 0.98f
 #define HOOK_HOLD_SWING_ACCEL 0.15f
+#define HOOK_HOLD_INWARD_CAP_SCALE 0.14f
+#define HOOK_HOLD_REDIRECT_SCALE 0.42f
+#define HOOK_HOLD_REDIRECT_CAP_SCALE 1.02f
+#define HOOK_HOLD_SLACK_TOLERANCE 4
 
 #define HOOK_MIN_PULL_SCALE 0.91f
 #define HOOK_MAX_PULL_SCALE 0.89f
@@ -520,7 +524,7 @@ static void PM_HookUpdateRopeLength(qbool holdActive, float holdLengthBlend, flo
 
 static float PM_HookHoldConstraintTarget(float distanceToHook, float radialSpeed, float maxPull)
 {
-	float stretch, tension;
+	float stretch, tension, inwardCap;
 
 	if (pmove.hook_rope_length <= HOOK_EPSILON || distanceToHook < pmove.hook_rope_length) {
 		return radialSpeed;
@@ -529,8 +533,65 @@ static float PM_HookHoldConstraintTarget(float distanceToHook, float radialSpeed
 	stretch = bound(0, (distanceToHook - pmove.hook_rope_length) / HOOK_HOLD_TAUT_DISTANCE, 1);
 	stretch = stretch * stretch * (3.0f - 2.0f * stretch);
 	tension = stretch * maxPull * HOOK_HOLD_TENSION_SCALE;
+	inwardCap = maxPull * HOOK_HOLD_INWARD_CAP_SCALE;
+
+	if (radialSpeed > inwardCap) {
+		return inwardCap;
+	}
 
 	return max(radialSpeed, tension);
+}
+
+static qbool PM_HookHoldTangentDirection(vec3_t uv_hook, vec3_t tangentialVel, float tangentialSpeed,
+		vec3_t tangentDir)
+{
+	vec3_t gravityDir;
+	float gravityDot;
+
+	if (tangentialSpeed > HOOK_EPSILON) {
+		VectorScale(tangentialVel, 1.0f / tangentialSpeed, tangentDir);
+		return true;
+	}
+
+	VectorSet(gravityDir, 0, 0, -1);
+	gravityDot = DotProduct(gravityDir, uv_hook);
+	VectorMA(gravityDir, -gravityDot, uv_hook, tangentDir);
+	return VectorNormalize(tangentDir) > HOOK_EPSILON;
+}
+
+static void PM_HookRedirectHoldEnergy(vec3_t uv_hook, float distanceToHook, float maxPull, float holdBlend)
+{
+	vec3_t radialVel, tangentialVel, tangentDir;
+	float radialSpeed, tangentialSpeed, holdEffect, inwardCap, excess, converted, cap;
+
+	holdEffect = PM_HookEaseBlend(holdBlend);
+	if (holdEffect <= 0 || pmove.hook_rope_length <= HOOK_EPSILON) {
+		return;
+	}
+
+	if (distanceToHook + HOOK_HOLD_SLACK_TOLERANCE < pmove.hook_rope_length) {
+		return;
+	}
+
+	PM_HookDecomposeVelocity(pmove.velocity, uv_hook, radialVel, tangentialVel, &radialSpeed);
+	inwardCap = maxPull * HOOK_HOLD_INWARD_CAP_SCALE;
+	if (radialSpeed <= inwardCap) {
+		return;
+	}
+
+	tangentialSpeed = VectorLength(tangentialVel);
+	if (!PM_HookHoldTangentDirection(uv_hook, tangentialVel, tangentialSpeed, tangentDir)) {
+		return;
+	}
+
+	excess = (radialSpeed - inwardCap) * holdEffect;
+	radialSpeed -= excess;
+	converted = excess * HOOK_HOLD_REDIRECT_SCALE;
+	cap = max(maxPull * HOOK_HOLD_REDIRECT_CAP_SCALE, tangentialSpeed);
+	tangentialSpeed = min(tangentialSpeed + converted, cap);
+
+	VectorScale(uv_hook, radialSpeed, radialVel);
+	VectorMA(radialVel, tangentialSpeed, tangentDir, pmove.velocity);
 }
 
 static void PM_HookApplyRadialPull(vec3_t uv_hook, float distanceToHook, float minPull, float maxPull,
@@ -840,6 +901,7 @@ static qbool PM_HookMove(void)
 
 	PM_HookApplyRadialPull(uv_pull, distanceToHook, minPull, maxPull, wishAlign, pmove.hook_hold_blend,
 			pmove.hook_reel_blend, pmove.hook_reel_pull_blend);
+	PM_HookRedirectHoldEnergy(uv_hook, distanceToHook, maxPull, pmove.hook_hold_blend);
 	PM_HookApplyInputControl(tangentDir, wishAlign, pmove.hook_reel_blend);
 	suppressEffect = reelEffect * reelEffect;
 	if (suppressEffect > 0) {
