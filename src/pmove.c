@@ -86,7 +86,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_INPUT_REEL_TANGENTIAL_SCALE 1.0f
 #define HOOK_INPUT_REEL_TANGENTIAL_DAMPING 1.0f
 #define HOOK_INPUT_REEL_GRAVITY_SCALE 1.05f
-#define HOOK_INPUT_REEL_MAX_PULL_SCALE 1.12f
+#define HOOK_INPUT_REEL_MAX_PULL_SCALE 1.19f
 #define HOOK_INPUT_NEUTRAL_REEL_SCALE 0.48f
 #define HOOK_INPUT_HOLD_REEL_DECAY 1.25f
 #define HOOK_INPUT_HOLD_EASE_TIME 0.60f
@@ -117,6 +117,7 @@ vec3_t	player_maxs = {16, 16, 32};
 #define HOOK_RADIAL_SPEED_CAP       1.14f
 #define HOOK_RADIAL_AWAY_CAP        0.85f
 #define HOOK_TANGENTIAL_SPEED_CAP   1.035f
+#define HOOK_HOLD_TANGENTIAL_SPEED_CAP 1.24f
 #define HOOK_TOTAL_SPEED_CAP        1.26f
 #define HOOK_SPEED_PRESERVE_TIME    0.22f
 #define HOOK_SPEED_PRESERVE_BUFFER  0.99f
@@ -780,7 +781,7 @@ static void PM_HookApplyHoldSwing(vec3_t uv_hook, float distanceToHook, float ma
 	VectorAdd(radialVel, tangentialVel, pmove.velocity);
 }
 
-static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
+static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull, float holdBlend)
 {
 	vec3_t radialVel;
 	vec3_t tangentialVel;
@@ -788,6 +789,7 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 	float tangentialSpeed;
 	float totalSpeed;
 	float cap;
+	float holdEffect;
 	float radialCap;
 	float preserveFactor;
 
@@ -799,7 +801,10 @@ static void PM_HookCapVelocity(vec3_t uv_hook, float maxPull)
 	VectorScale(uv_hook, radialSpeed, radialVel);
 
 	tangentialSpeed = VectorNormalize(tangentialVel);
-	cap = PM_HookPreservedCap(maxPull * HOOK_TANGENTIAL_SPEED_CAP, pmove.hook_initial_tangential_speed, preserveFactor);
+	holdEffect = PM_HookEaseBlend(holdBlend);
+	cap = HOOK_TANGENTIAL_SPEED_CAP
+			+ holdEffect * (HOOK_HOLD_TANGENTIAL_SPEED_CAP - HOOK_TANGENTIAL_SPEED_CAP);
+	cap = PM_HookPreservedCap(maxPull * cap, pmove.hook_initial_tangential_speed, preserveFactor);
 	if (tangentialSpeed > cap) {
 		VectorScale(tangentialVel, cap, tangentialVel);
 	}
@@ -916,7 +921,7 @@ static qbool PM_HookMove(void)
 	}
 	PM_HookApplyHoldSwing(uv_hook, distanceToHook, maxPull, pmove.hook_hold_blend);
 	PM_HookApplyOscillation(uv_pull, distanceToHook);
-	PM_HookCapVelocity(uv_pull, maxPull);
+	PM_HookCapVelocity(uv_pull, maxPull, pmove.hook_hold_blend);
 	PM_HookPreserveReelSpeed(entrySpeed, reelPullEffect, entryRadialSpeed, entryTangentialSpeed, maxPull);
 	return true;
 }
